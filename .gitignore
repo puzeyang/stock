@@ -1,0 +1,13 @@
+# Sub-projects have their own git repos — exclude them
+archive/
+ibbot/
+ibkr/
+research/
+schwab/
+
+# Mac
+.DS_Store
+__pycache__/
+*.pyc
+*.pyo
+.venv/
