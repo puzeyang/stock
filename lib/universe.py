@@ -196,13 +196,25 @@ def qqq_symbols() -> list[str]:
 
 
 def sp500_symbols(date: str = "2026-06-13") -> list[str]:
-    """S&P 500 constituents — tries live fetch, falls back to curated subset."""
+    """S&P 500 constituents — reads from lib/data/sp500/, falls back to curated subset.
+
+    Data source: fja05680/sp500 (https://github.com/fja05680/sp500).
+    Update by replacing the CSVs in lib/data/sp500/.
+    """
+    import glob
+    import pandas as pd
+    from pathlib import Path
+    _sp500_dir = Path(__file__).resolve().parent / "data" / "sp500"
+    csv_files = glob.glob(str(_sp500_dir / "S&P 500 Historical Components & Changes*.csv"))
+    if not csv_files:
+        return sorted(SP500_UNIVERSE)
     try:
-        import sys
-        from pathlib import Path
-        _stock_root = Path(__file__).resolve().parents[1]
-        sys.path.insert(0, str(_stock_root))
-        from research.src.regime_data import _get_sp500_constituents
-        return sorted(_get_sp500_constituents(date))
+        best_csv = max(csv_files, key=lambda p: pd.read_csv(p, index_col="date").index[-1])
+        df = pd.read_csv(best_csv, index_col="date")
+        snap = df[df.index <= date]
+        if snap.empty:
+            return sorted(SP500_UNIVERSE)
+        tickers = snap.iloc[-1]["tickers"].split(",")
+        return sorted(t.strip().replace(".", "-") for t in tickers if t.strip())
     except Exception:
         return sorted(SP500_UNIVERSE)
