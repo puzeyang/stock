@@ -18,7 +18,7 @@ MY_WATCHLIST: list[str] = [
     # Mega-cap tech
     "AAPL", "MSFT", "NVDA", "META", "GOOGL", "AMZN", "TSLA",
     # Semis
-    "AMD", "AVGO", "ARM", "MRVL", "ON", "QCOM", "MU",
+    "AMD", "AVGO", "ARM", "MRVL", "ON", "QCOM", "MU", "FOTO", "TSEM",
     # Software / security
     "CRWD", "PANW", "PLTR", "APP", "DDOG", "FTNT", "ZS",
     # High-beta / crypto-adjacent
@@ -151,8 +151,48 @@ SP500_UNIVERSE: dict[str, str] = {
 }
 
 
+# ── Nasdaq-100 constituents (as of 2026-Q2) ──────────────────────────────────
+# Source: Nasdaq.com / QQQ ETF holdings. Update quarterly.
+# Used as the expanded evaluation universe for stratlab cross-universe runs.
+QQQ_UNIVERSE: list[str] = [
+    "AAPL", "MSFT", "NVDA", "AMZN", "META", "TSLA", "GOOGL", "GOOG", "AVGO", "COST",
+    "NFLX", "AMD", "PEP", "CSCO", "ADBE", "TMUS", "TXN", "QCOM", "ISRG", "INTU",
+    "AMGN", "AMAT", "HON", "BKNG", "MU", "LRCX", "VRTX", "PANW", "ADP", "SBUX",
+    "GILD", "KLAC", "MELI", "MDLZ", "REGN", "ADI", "CRWD", "CDNS", "SNPS", "MAR",
+    "FTNT", "PYPL", "ORLY", "MNST", "CEG", "CTAS", "DASH", "ABNB", "MRVL", "TTD",
+    "WDAY", "PCAR", "KDP", "FAST", "NXPI", "DXCM", "EXC", "TEAM", "ROST", "GEHC",
+    "VRSK", "XEL", "ODFL", "IDXX", "FANG", "BKR", "KHC", "EA", "DDOG", "ZS",
+    "CTSH", "LULU", "ON", "ANSS", "GFS", "MCHP", "WBD", "BIIB", "ILMN", "TTWO",
+    "SIRI", "DLTR", "SMCI", "APP", "PLTR", "MSTR", "ARM", "ASML", "ADI", "MDB",
+    "OKTA", "ZM", "BILL", "GTLB", "NET", "SNOW", "COIN", "SHOP", "NTNX", "IOT",
+]
+
+
 def tech_symbols() -> list[str]:
     return sorted(TECH_UNIVERSE)
+
+
+def qqq_symbols() -> list[str]:
+    """Current Nasdaq-100 constituents. Tries live fetch via yfinance, falls back to hardcoded list."""
+    try:
+        import yfinance as yf
+        import pandas as pd
+        # yfinance only exposes top 10 holdings for ETFs; use a Wikipedia scrape approach
+        tables = pd.read_html(
+            "https://en.wikipedia.org/wiki/Nasdaq-100",
+            storage_options={"User-Agent": "Mozilla/5.0"},
+        )
+        for t in tables:
+            cols = [str(c).lower() for c in t.columns]
+            if any("ticker" in c or "symbol" in c for c in cols):
+                col = next(c for c, n in zip(t.columns, cols) if "ticker" in n or "symbol" in n)
+                syms = t[col].dropna().str.strip().tolist()
+                syms = [s for s in syms if s.isalpha() and 1 <= len(s) <= 5]
+                if len(syms) >= 90:
+                    return sorted(set(syms))
+    except Exception:
+        pass
+    return sorted(set(QQQ_UNIVERSE))
 
 
 def sp500_symbols(date: str = "2026-06-13") -> list[str]:
