@@ -23,6 +23,13 @@ try:
 except ImportError:
     HAS_YFINANCE = False
 
+try:
+    import exchange_calendars as _xcals
+    _NYSE = _xcals.get_calendar("XNYS")
+    HAS_XCALS = True
+except ImportError:
+    HAS_XCALS = False
+
 DEFAULT_SYMBOLS = ["QQQ", "NVDA", "TSLA"]
 
 __all__ = ["DataLoader"]
@@ -162,17 +169,31 @@ class DataLoader:
         if latest_date is None:
             return False
         now_et = datetime.now(self._eastern_tz)
-        today_et = now_et.date()
         latest_date_only = latest_date.date()
-        weekday = today_et.weekday()
-        if weekday == 5:
-            expected_latest = today_et - timedelta(days=1)
-        elif weekday == 6:
-            expected_latest = today_et - timedelta(days=2)
+
+        if HAS_XCALS:
+            now_ts = pd.Timestamp(now_et)
+            MARKET_CLOSE_HOUR = 16
+            if now_et.hour >= MARKET_CLOSE_HOUR and _NYSE.is_session(now_ts.date()):
+                expected_latest = now_ts.date()
+            else:
+                expected_latest = _NYSE.previous_close(now_ts).date()
         else:
-            expected_latest = today_et - timedelta(days=1)
-            if expected_latest.weekday() == 6:
-                expected_latest -= timedelta(days=2)
+            # Fallback: weekend/weekday logic without holiday awareness
+            today_et = now_et.date()
+            weekday = today_et.weekday()
+            MARKET_CLOSE_HOUR = 16
+            if weekday == 5:
+                expected_latest = today_et - timedelta(days=1)
+            elif weekday == 6:
+                expected_latest = today_et - timedelta(days=2)
+            elif now_et.hour >= MARKET_CLOSE_HOUR:
+                expected_latest = today_et
+            else:
+                expected_latest = today_et - timedelta(days=1)
+                if expected_latest.weekday() == 6:
+                    expected_latest -= timedelta(days=2)
+
         return latest_date_only >= expected_latest
 
     def _download_with_retry(
