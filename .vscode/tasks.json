@@ -1,0 +1,57 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Voilà: Account Dashboard",
+            "type": "shell",
+            "command": "/usr/bin/python3 -m voila ibkr/notebooks/dashboard.ipynb",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "silent",
+                "panel": "dedicated"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Panel: Account Dashboard",
+            "type": "shell",
+            "command": "\"${workspaceFolder}/ibkr/.venv/bin/python3\" -m panel serve ibkr/src/panel/dashboard_app.py --dev --show",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Panel: Risk Dashboard",
+            "type": "shell",
+            "command": "\"${workspaceFolder}/ibkr/.venv/bin/python3\" -m panel serve ibkr/src/panel/risk_app.py --dev --show --port 5007",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Panel: Open Simple Browser",
+            "command": "${input:openSimpleBrowser}",
+            "problemMatcher": []
+        }
+    ],
+    "inputs": [
+        {
+            "id": "openSimpleBrowser",
+            "type": "command",
+            "command": "simpleBrowser.show",
+            "args": ["http://localhost:5006/dashboard_app"]
+        }
+    ]
+}
