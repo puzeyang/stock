@@ -45,6 +45,23 @@ counts sessions, not calendar time. Fail-closed: if fewer than
 is too close to the end of the pinned dataset), returns `None` rather
 than truncating the window — silently truncating would quietly change
 what a 20-session return means near the data's edge.
+
+**Hit rate + vol-normalized return (added per Message[203], following
+Message[202]'s finding)**: a full-history, non-crisis-selected run
+found RISK_OFF's higher raw mean forward return was almost entirely a
+MAGNITUDE effect — RISK_ON and RISK_OFF had nearly identical hit rates
+(fraction of dates with a positive forward return), meaning raw mean
+percent return alone is not a fair way to rank configs (a config could
+score higher just by spending more time in RISK_OFF near real washed-out
+lows, a different property than classifying regime more accurately).
+`summarize_by_state` now also reports `hit_rate` (direction, independent
+of size) and `mean_vol_normalized_forward_return` (the forward return
+divided by trailing realized volatility scaled to the same horizon,
+reusing `_realized_vol_estimator` unchanged — asks whether a state's
+moves are still large after accounting for how volatile the market
+already was), so a config comparison can separate "predicts direction
+better," "predicts a bigger-than-typical move," and "just happens to
+occur near naturally larger swings" instead of conflating all three.
 """
 from __future__ import annotations
 
@@ -56,6 +73,7 @@ from .engine import (
     TEST_SCAFFOLDING_CONFIG,
     new_running_engine_state,
     run_engine_for_date,
+    _realized_vol_estimator,
 )
 from .contracts import Manifest
 from .raw_features import RawSeries
@@ -81,12 +99,54 @@ def forward_return(benchmark: RawSeries, as_of: str, horizon_sessions: int) -> f
     return target.value / anchor.value - 1.0
 
 
+def vol_normalized_forward_return(
+    benchmark: RawSeries, as_of: str, horizon_sessions: int, raw_forward_return: float | None,
+) -> float | None:
+    """`raw_forward_return` divided by the TRAILING realized volatility
+    scaled to the same `horizon_sessions` horizon — answers "how many
+    trailing-vol-units did the market move," not just "how many percent."
+    Added per Message[202]'s finding: RISK_OFF's higher raw mean forward
+    return turned out to be almost entirely a MAGNITUDE effect (hit rate
+    was nearly identical between RISK_OFF/RISK_ON), consistent with
+    RISK_OFF disproportionately being called in choppier/higher-vol
+    periods where a 20-session move is mechanically larger in percent
+    terms regardless of direction. Dividing by trailing vol asks whether
+    a state's forward moves are still large AFTER accounting for how
+    volatile the market already was at the time — a fairer basis for
+    comparing configs than raw percent return.
+
+    Reuses `_realized_vol_estimator` (`engine.py`) UNCHANGED — the same
+    real, trailing-20-session annualized realized-vol formula already
+    used in Stability's own pillar computation, not a new formula
+    invented for this comparison. De-annualized via `/ sqrt(252)` then
+    re-scaled to `horizon_sessions` via `* sqrt(horizon_sessions)`,
+    standard volatility time-scaling (variance scales linearly with time
+    under the i.i.d.-returns assumption `_realized_vol_estimator` itself
+    already makes).
+
+    Fail-closed: returns `None` if `raw_forward_return` is `None`, the
+    realized-vol estimator is unavailable (insufficient trailing
+    history), or the estimated vol is exactly 0.0 (would divide by zero
+    — a real, if rare, edge case worth failing closed on rather than
+    returning +/-inf)."""
+    if raw_forward_return is None:
+        return None
+    annualized_vol = _realized_vol_estimator(benchmark, as_of)
+    if annualized_vol is None or annualized_vol == 0.0:
+        return None
+    horizon_vol = annualized_vol / (252.0 ** 0.5) * (horizon_sessions ** 0.5)
+    if horizon_vol == 0.0:
+        return None
+    return raw_forward_return / horizon_vol
+
+
 @dataclass(frozen=True)
 class ScoredDate:
     as_of: str
     state: str | None
     condition_score: float | None
     forward_return: float | None
+    vol_normalized_forward_return: float | None
 
 
 @dataclass(frozen=True)
@@ -115,11 +175,13 @@ def run_scored_replay(
     for as_of in dates:
         record = run_engine_for_date(as_of, raw, state, manifest, config=config)
         fwd = forward_return(raw.benchmark, as_of, horizon_sessions)
+        vol_norm = vol_normalized_forward_return(raw.benchmark, as_of, horizon_sessions, fwd)
         scored.append(ScoredDate(
             as_of=as_of,
             state=record.get("state"),
             condition_score=record.get("condition_score"),
             forward_return=fwd,
+            vol_normalized_forward_return=vol_norm,
         ))
     return ScoredReplayResult(horizon_sessions=horizon_sessions, scored_dates=tuple(scored))
 
@@ -132,11 +194,15 @@ class StateForwardStats:
     median_forward_return: float
     min_forward_return: float
     max_forward_return: float
+    hit_rate: float
+    mean_vol_normalized_forward_return: float | None
+    vol_normalized_count: int
 
 
 def summarize_by_state(result: ScoredReplayResult) -> tuple[StateForwardStats, ...]:
     """Group scored dates by `state` label, computing descriptive stats
-    (mean/median/min/max) of the REAL forward return within each group.
+    of the REAL forward return within each group.
+
     Dates with `state=None` (engine unavailable — e.g. insufficient
     history) or `forward_return=None` (too close to the data's edge for
     a full horizon) are excluded from every group, not counted as zero —
@@ -144,19 +210,41 @@ def summarize_by_state(result: ScoredReplayResult) -> tuple[StateForwardStats, .
     engine's None-handling, not a silent substitution. Groups are
     returned sorted by state label for deterministic output; a state
     with zero qualifying dates in the input is simply absent from the
-    result (never fabricated as a zero-count row)."""
-    by_state: dict[str, list[float]] = {}
+    result (never fabricated as a zero-count row).
+
+    `hit_rate` (added per Message[202]/[203]): fraction of the group's
+    dates with a STRICTLY POSITIVE forward return — separates DIRECTION
+    (did the market go up) from MAGNITUDE (mean/median return), since
+    Message[202] found these can tell very different stories for the
+    same state (RISK_OFF/RISK_ON had nearly identical hit rates despite
+    a large mean-return gap).
+
+    `mean_vol_normalized_forward_return`/`vol_normalized_count` (added
+    per Message[203]): mean of `vol_normalized_forward_return` within
+    the group, a separate, smaller-count exclusion (a date needs BOTH a
+    computable forward return AND a computable trailing realized vol —
+    `vol_normalized_count` is reported explicitly alongside `count`
+    rather than silently assumed equal, since the two exclusion sets are
+    not identical). `None` if zero dates in the group have a computable
+    vol-normalized value."""
+    by_state: dict[str, list[ScoredDate]] = {}
     for sd in result.scored_dates:
         if sd.state is None or sd.forward_return is None:
             continue
-        by_state.setdefault(sd.state, []).append(sd.forward_return)
+        by_state.setdefault(sd.state, []).append(sd)
 
     stats: list[StateForwardStats] = []
     for state_label in sorted(by_state):
-        returns = sorted(by_state[state_label])
+        group = by_state[state_label]
+        returns = sorted(sd.forward_return for sd in group)
         n = len(returns)
         mid = n // 2
         median = returns[mid] if n % 2 == 1 else (returns[mid - 1] + returns[mid]) / 2.0
+        hits = sum(1 for r in returns if r > 0.0)
+
+        vol_norm_values = [sd.vol_normalized_forward_return for sd in group if sd.vol_normalized_forward_return is not None]
+        mean_vol_norm = sum(vol_norm_values) / len(vol_norm_values) if vol_norm_values else None
+
         stats.append(StateForwardStats(
             state=state_label,
             count=n,
@@ -164,5 +252,8 @@ def summarize_by_state(result: ScoredReplayResult) -> tuple[StateForwardStats, .
             median_forward_return=median,
             min_forward_return=returns[0],
             max_forward_return=returns[-1],
+            hit_rate=hits / n,
+            mean_vol_normalized_forward_return=mean_vol_norm,
+            vol_normalized_count=len(vol_norm_values),
         ))
     return tuple(stats)

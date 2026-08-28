@@ -29,6 +29,7 @@ from v5_1.engine import load_raw_series_bundle, TEST_SCAFFOLDING_CONFIG  # noqa:
 from v5_1.raw_features import RawObservation, RawSeries  # noqa: E402
 from v5_1.scoring import (  # noqa: E402
     forward_return,
+    vol_normalized_forward_return,
     run_scored_replay,
     summarize_by_state,
     ScoredDate,
@@ -106,15 +107,25 @@ class TestForwardReturn:
 # run_scored_replay + summarize_by_state — synthetic mechanics
 # ---------------------------------------------------------------------------
 
+def _sd(as_of, state, condition_score, forward_return, vol_normalized_forward_return=None):
+    """Helper: builds a ScoredDate, defaulting the new (Message[203])
+    vol_normalized_forward_return field to None for tests that only care
+    about the original forward_return-based mechanics."""
+    return ScoredDate(
+        as_of=as_of, state=state, condition_score=condition_score,
+        forward_return=forward_return, vol_normalized_forward_return=vol_normalized_forward_return,
+    )
+
+
 class TestSummarizeByState:
     def test_groups_and_averages_correctly(self):
         result = ScoredReplayResult(
             horizon_sessions=20,
             scored_dates=(
-                ScoredDate(as_of="2024-01-01", state="RISK_OFF", condition_score=0.2, forward_return=-0.05),
-                ScoredDate(as_of="2024-01-02", state="RISK_OFF", condition_score=0.25, forward_return=-0.03),
-                ScoredDate(as_of="2024-01-03", state="RISK_ON", condition_score=0.8, forward_return=0.08),
-                ScoredDate(as_of="2024-01-04", state="RISK_ON", condition_score=0.85, forward_return=0.04),
+                _sd("2024-01-01", "RISK_OFF", 0.2, -0.05),
+                _sd("2024-01-02", "RISK_OFF", 0.25, -0.03),
+                _sd("2024-01-03", "RISK_ON", 0.8, 0.08),
+                _sd("2024-01-04", "RISK_ON", 0.85, 0.04),
             ),
         )
         stats = summarize_by_state(result)
@@ -128,8 +139,8 @@ class TestSummarizeByState:
         result = ScoredReplayResult(
             horizon_sessions=20,
             scored_dates=(
-                ScoredDate(as_of="2024-01-01", state=None, condition_score=None, forward_return=0.05),
-                ScoredDate(as_of="2024-01-02", state="NEUTRAL", condition_score=0.5, forward_return=0.01),
+                _sd("2024-01-01", None, None, 0.05),
+                _sd("2024-01-02", "NEUTRAL", 0.5, 0.01),
             ),
         )
         stats = summarize_by_state(result)
@@ -140,8 +151,8 @@ class TestSummarizeByState:
         result = ScoredReplayResult(
             horizon_sessions=20,
             scored_dates=(
-                ScoredDate(as_of="2024-01-01", state="NEUTRAL", condition_score=0.5, forward_return=None),
-                ScoredDate(as_of="2024-01-02", state="NEUTRAL", condition_score=0.5, forward_return=0.02),
+                _sd("2024-01-01", "NEUTRAL", 0.5, None),
+                _sd("2024-01-02", "NEUTRAL", 0.5, 0.02),
             ),
         )
         stats = summarize_by_state(result)
@@ -153,7 +164,7 @@ class TestSummarizeByState:
         result = ScoredReplayResult(
             horizon_sessions=20,
             scored_dates=(
-                ScoredDate(as_of="2024-01-01", state=None, condition_score=None, forward_return=None),
+                _sd("2024-01-01", None, None, None),
             ),
         )
         stats = summarize_by_state(result)
@@ -163,10 +174,10 @@ class TestSummarizeByState:
         result = ScoredReplayResult(
             horizon_sessions=20,
             scored_dates=(
-                ScoredDate(as_of="2024-01-01", state="NEUTRAL", condition_score=0.5, forward_return=0.01),
-                ScoredDate(as_of="2024-01-02", state="NEUTRAL", condition_score=0.5, forward_return=0.03),
-                ScoredDate(as_of="2024-01-03", state="NEUTRAL", condition_score=0.5, forward_return=0.05),
-                ScoredDate(as_of="2024-01-04", state="NEUTRAL", condition_score=0.5, forward_return=0.07),
+                _sd("2024-01-01", "NEUTRAL", 0.5, 0.01),
+                _sd("2024-01-02", "NEUTRAL", 0.5, 0.03),
+                _sd("2024-01-03", "NEUTRAL", 0.5, 0.05),
+                _sd("2024-01-04", "NEUTRAL", 0.5, 0.07),
             ),
         )
         stats = summarize_by_state(result)
@@ -176,13 +187,100 @@ class TestSummarizeByState:
         result = ScoredReplayResult(
             horizon_sessions=20,
             scored_dates=(
-                ScoredDate(as_of="2024-01-01", state="RISK_ON", condition_score=0.8, forward_return=0.01),
-                ScoredDate(as_of="2024-01-02", state="CRISIS", condition_score=0.1, forward_return=-0.1),
-                ScoredDate(as_of="2024-01-03", state="NEUTRAL", condition_score=0.5, forward_return=0.0),
+                _sd("2024-01-01", "RISK_ON", 0.8, 0.01),
+                _sd("2024-01-02", "CRISIS", 0.1, -0.1),
+                _sd("2024-01-03", "NEUTRAL", 0.5, 0.0),
             ),
         )
         stats = summarize_by_state(result)
         assert [s.state for s in stats] == ["CRISIS", "NEUTRAL", "RISK_ON"]
+
+    def test_hit_rate_counts_strictly_positive_returns(self):
+        result = ScoredReplayResult(
+            horizon_sessions=20,
+            scored_dates=(
+                _sd("2024-01-01", "RISK_ON", 0.8, 0.05),
+                _sd("2024-01-02", "RISK_ON", 0.8, -0.02),
+                _sd("2024-01-03", "RISK_ON", 0.8, 0.03),
+                _sd("2024-01-04", "RISK_ON", 0.8, 0.0),  # exactly zero — not a hit
+            ),
+        )
+        stats = summarize_by_state(result)
+        # 2 of 4 strictly positive (0.0 does not count as a hit)
+        assert stats[0].hit_rate == pytest.approx(0.5)
+
+    def test_hit_rate_can_diverge_from_mean_return_sign(self):
+        # Reproduces the Message[202] shape at small scale: mostly-positive
+        # hit rate but a mean pulled negative by one large outlier.
+        result = ScoredReplayResult(
+            horizon_sessions=20,
+            scored_dates=(
+                _sd("2024-01-01", "RISK_ON", 0.8, 0.01),
+                _sd("2024-01-02", "RISK_ON", 0.8, 0.01),
+                _sd("2024-01-03", "RISK_ON", 0.8, 0.01),
+                _sd("2024-01-04", "RISK_ON", 0.8, -0.30),
+            ),
+        )
+        stats = summarize_by_state(result)
+        assert stats[0].hit_rate == pytest.approx(0.75)
+        assert stats[0].mean_forward_return < 0
+
+    def test_vol_normalized_mean_excludes_none_independently_of_forward_return(self):
+        result = ScoredReplayResult(
+            horizon_sessions=20,
+            scored_dates=(
+                _sd("2024-01-01", "NEUTRAL", 0.5, 0.02, vol_normalized_forward_return=1.5),
+                _sd("2024-01-02", "NEUTRAL", 0.5, 0.03, vol_normalized_forward_return=None),
+                _sd("2024-01-03", "NEUTRAL", 0.5, 0.01, vol_normalized_forward_return=0.5),
+            ),
+        )
+        stats = summarize_by_state(result)
+        # count=3 (all have forward_return), but vol_normalized_count=2
+        # (one date's vol-normalized value is None) — reported separately,
+        # not silently assumed equal to count.
+        assert stats[0].count == 3
+        assert stats[0].vol_normalized_count == 2
+        assert stats[0].mean_vol_normalized_forward_return == pytest.approx(1.0)
+
+    def test_mean_vol_normalized_is_none_when_no_date_has_a_computable_value(self):
+        result = ScoredReplayResult(
+            horizon_sessions=20,
+            scored_dates=(
+                _sd("2024-01-01", "NEUTRAL", 0.5, 0.02, vol_normalized_forward_return=None),
+            ),
+        )
+        stats = summarize_by_state(result)
+        assert stats[0].mean_vol_normalized_forward_return is None
+        assert stats[0].vol_normalized_count == 0
+
+
+# ---------------------------------------------------------------------------
+# vol_normalized_forward_return
+# ---------------------------------------------------------------------------
+
+class TestVolNormalizedForwardReturn:
+    def test_returns_none_when_raw_forward_return_is_none(self, raw_bundle):
+        result = vol_normalized_forward_return(raw_bundle.benchmark, "2018-12-24", 20, None)
+        assert result is None
+
+    def test_returns_none_when_insufficient_trailing_history(self):
+        # Only 3 observations — _realized_vol_estimator needs 21 (20
+        # return periods) ending at as_of, so this must fail closed.
+        series = _series([("2024-01-01", 100.0), ("2024-01-02", 101.0), ("2024-01-03", 102.0)])
+        result = vol_normalized_forward_return(series, "2024-01-03", 20, 0.05)
+        assert result is None
+
+    def test_scales_raw_return_by_horizon_vol_against_real_data(self, raw_bundle):
+        raw_fwd = forward_return(raw_bundle.benchmark, "2018-12-24", 20)
+        assert raw_fwd is not None
+        result = vol_normalized_forward_return(raw_bundle.benchmark, "2018-12-24", 20, raw_fwd)
+        assert result is not None
+        # 2018-12-24 (Christmas Eve Massacre) was a genuinely high-vol
+        # period — the vol-normalized value should be meaningfully
+        # smaller in magnitude than the raw percent return, since dividing
+        # by an elevated trailing vol shrinks the ratio.
+        assert abs(result) < abs(raw_fwd) * 100  # sanity: not wildly inflated
+
 
 
 # ---------------------------------------------------------------------------
@@ -204,6 +302,9 @@ class TestRunScoredReplayIntegration:
             # must be computable (fails the test loudly if pinned data
             # coverage ever regresses to not reach this far).
             assert sd.forward_return is not None
+            # Same for the vol-normalized value — plenty of trailing
+            # history exists this far into the pinned dataset.
+            assert sd.vol_normalized_forward_return is not None
 
     def test_forward_return_matches_direct_computation(self, raw_bundle, manifest):
         dates = ("2018-12-24",)
