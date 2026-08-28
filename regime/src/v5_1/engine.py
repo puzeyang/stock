@@ -457,6 +457,25 @@ REASONABLENESS_CHECK_CONFIG_REAL_BREADTH = replace(
 )
 
 
+# REASONABLENESS_CHECK_CONFIG_ALL_REAL — a FIFTH scaffolding instance, per
+# continued empirical study (Message[198]): combines the two independent
+# fixes found so far (Direction's real 21/65/200 EMA/SMA windows from
+# REASONABLENESS_CHECK_CONFIG, and Breadth's real 50/200 SMA windows from
+# REASONABLENESS_CHECK_CONFIG_REAL_BREADTH) into ONE config — every prior
+# comparison tested exactly one pillar's window fix in isolation, holding
+# the other pillar's short/fixture window fixed; this tests whether fixing
+# BOTH at once changes the picture (e.g. do the two pillars' now-both-real
+# windows reinforce each other, or does one dominate/mask the other's
+# effect on condition_score/state?). NOT a production default, same
+# discipline as every other config here.
+REASONABLENESS_CHECK_CONFIG_ALL_REAL = replace(
+    TEST_SCAFFOLDING_CONFIG,
+    direction_horizons=DirectionHorizons(ema_fast=21, sma_mid=65, sma_long=200),
+    breadth_sma50_window=50,
+    breadth_sma200_window=200,
+)
+
+
 @dataclass(frozen=True)
 class RawSeriesBundle:
     """Every raw series the orchestrator needs for one run, loaded once
