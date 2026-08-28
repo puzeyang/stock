@@ -268,13 +268,13 @@
       "freshness_rule": "Refresh after each completed expected session; fail closed when the declared threshold is exceeded.",
       "missing_rule": "Required-input failure propagates null with reason; no silent fill.",
       "splice_policy": "No silent source splice within a published dataset version.",
-      "dataset_version": "snapshot-2026-08-25",
+      "dataset_version": "snapshot-2026-08-27",
       "source_tier": "canonical_production",
       "snapshot_paths": [
         "research/technical-analysis/data/market/VIX.csv"
       ],
       "snapshot_sha256": {
-        "research/technical-analysis/data/market/VIX.csv": "14dc094cd11cbc8826f467495dc82aee7545165c5fbe9a22179e23d6ebd5d78b"
+        "research/technical-analysis/data/market/VIX.csv": "bc711941131a7c28553523bd398f412624bc1d763ec6574f667bd1e79a5f121e"
       },
       "refresh_policy": "Run the versioned updater after each completed session; recompute hashes and bump dataset_version before adoption.",
       "notes": "Canonical implied-volatility input.",
@@ -332,13 +332,13 @@
       "freshness_rule": "Refresh after each completed expected session; fail closed when the declared threshold is exceeded.",
       "missing_rule": "Required-input failure propagates null with reason; no silent fill.",
       "splice_policy": "No silent source splice within a published dataset version.",
-      "dataset_version": "snapshot-2026-08-25",
+      "dataset_version": "snapshot-2026-08-27",
       "source_tier": "diagnostic_only",
       "snapshot_paths": [
         "research/technical-analysis/data/market/VIX3M.csv"
       ],
       "snapshot_sha256": {
-        "research/technical-analysis/data/market/VIX3M.csv": "de8e0f6c297137ec00e6709f8e64a1367addec8ad631377fe285f96c7b5418e0"
+        "research/technical-analysis/data/market/VIX3M.csv": "1e55bf8446b62d6ae72b8e28ae3e93ba4f5991fc7553a7fae0ce0da43a13e175"
       },
       "refresh_policy": "Run the versioned updater after each completed session; recompute hashes and bump dataset_version before adoption.",
       "notes": "Never required by canonical production.",
