@@ -92,7 +92,7 @@ here rather than reinvented.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from .contracts import Manifest, load_manifest
 from .normalization import causal_midrank, InsufficientHistoryError, REQUIRED_WINDOW_SIZE
@@ -374,6 +374,39 @@ class TestScaffoldingConfig:
 
 
 TEST_SCAFFOLDING_CONFIG = TestScaffoldingConfig()
+
+
+# ---------------------------------------------------------------------------
+# REASONABLENESS_CHECK_CONFIG — a SECOND, separate scaffolding instance for
+# real-history investigation (Message[191]/[194]), NOT a replacement for
+# TEST_SCAFFOLDING_CONFIG. Still NOT a production default — every value
+# below is exactly as arbitrary/uncalibrated as TEST_SCAFFOLDING_CONFIG's;
+# the only thing that changed is the Direction MA window lengths, moved
+# from the short 5/10/20-day windows (chosen so synthetic short-history
+# test fixtures could still exercise the pipeline) to the 21/65/200-session
+# EMA/SMA windows the design doc's own §6.1 structure table and plan §17.1
+# ("v4.4 default 21/65/200 as a labeled benchmark preset") both reference
+# by name — a real, cited reference configuration, not an invented number.
+#
+# WHY A SEPARATE CONFIG, NOT A CHANGE TO TEST_SCAFFOLDING_CONFIG (human
+# decision, Message[195]): test_engine.py's own unit tests rely on
+# TEST_SCAFFOLDING_CONFIG's SHORT windows to exercise fail-closed/boundary
+# behavior against short synthetic fixtures; widening those windows would
+# break that existing, still-needed test coverage. Real-history
+# investigation (this config) and short-fixture unit testing
+# (TEST_SCAFFOLDING_CONFIG) are two genuinely different purposes that
+# happened to share one config object before this — now they don't.
+#
+# Found during the Message[191]/[194] reasonableness checks: the SHORT
+# window config produced real false-signal whipsaws on at least 3
+# independent historical instances (a March 2026 pullback, a July 2020
+# wiggle, an August 2022 bear-market-rally overshoot) — this config exists
+# specifically to re-run those same checks with a real, cited reference
+# window length and see whether the false signals persist or resolve.
+REASONABLENESS_CHECK_CONFIG = replace(
+    TEST_SCAFFOLDING_CONFIG,
+    direction_horizons=DirectionHorizons(ema_fast=21, sma_mid=65, sma_long=200),
+)
 
 
 @dataclass(frozen=True)
