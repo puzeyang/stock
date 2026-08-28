@@ -457,6 +457,28 @@ REASONABLENESS_CHECK_CONFIG_REAL_BREADTH = replace(
 )
 
 
+# REASONABLENESS_CHECK_CONFIG_BREADTH_MID — a mid-length Breadth window
+# comparison point, per continued empirical study. Unlike Direction's
+# 8/21/65 mid config (REASONABLENESS_CHECK_CONFIG_MID), which had a
+# citeable reference (design §6.1's own EMA21/SMA65/SMA200 structure
+# table), there is NO other window length cited anywhere in the design
+# for Breadth besides the field names' own literal 50/200 — this is
+# flagged honestly rather than dressed up as a reference value. 20/50
+# sessions is used here as a common, independently-recognizable
+# short/medium-trend pairing (distinct from both the 5/10 fixture
+# shortcut and the 50/200 "real" window), chosen to probe whether
+# Breadth's sensitivity is a smooth function of window length or has a
+# sharper break point somewhere between the two extremes already tested.
+# NOT a production default, NOT a cited benchmark — an invented probe
+# point, same `dataclasses.replace()` discipline as every other config
+# here.
+REASONABLENESS_CHECK_CONFIG_BREADTH_MID = replace(
+    TEST_SCAFFOLDING_CONFIG,
+    breadth_sma50_window=20,
+    breadth_sma200_window=50,
+)
+
+
 # REASONABLENESS_CHECK_CONFIG_ALL_REAL — a FIFTH scaffolding instance, per
 # continued empirical study (Message[198]): combines the two independent
 # fixes found so far (Direction's real 21/65/200 EMA/SMA windows from
