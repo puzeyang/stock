@@ -1,0 +1,221 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:market-regime:field-manifest-schema:1.0.0",
+  "title": "Market Regime Field Manifest Schema",
+  "description": "Structural schema for a versioned Market Regime machine-readable field manifest.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "manifest_format_version",
+    "schema_version",
+    "feature_contract_version",
+    "design_document",
+    "design_sha256",
+    "generated_at",
+    "status",
+    "canonical_calendar",
+    "source_contracts",
+    "fields"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "manifest_format_version": { "type": "string", "const": "1.0.0" },
+    "schema_version": { "type": "string", "const": "5.1" },
+    "feature_contract_version": { "type": "string", "const": "5.1" },
+    "design_document": { "type": "string", "minLength": 1 },
+    "design_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "status": { "type": "string", "enum": ["architecture_baseline", "implementation_candidate", "production"] },
+    "canonical_calendar": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["calendar_id", "timezone", "frequency", "session_semantics"],
+      "properties": {
+        "calendar_id": { "type": "string", "minLength": 1 },
+        "timezone": { "type": "string", "minLength": 1 },
+        "frequency": { "type": "string", "const": "daily_expected_session" },
+        "session_semantics": { "type": "string", "minLength": 1 }
+      }
+    },
+    "source_contracts": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/sourceContract" }
+    },
+    "fields": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/field" }
+    }
+  },
+  "$defs": {
+    "sourceContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_contract_id",
+        "status",
+        "provider",
+        "dataset",
+        "symbol_or_collection",
+        "field",
+        "frequency",
+        "timezone",
+        "adjustment_policy",
+        "vintage_policy",
+        "freshness_rule",
+        "missing_rule",
+        "splice_policy",
+        "dataset_version",
+        "source_tier",
+        "snapshot_paths",
+        "snapshot_sha256",
+        "refresh_policy",
+        "calendar",
+        "observation_timestamp_policy",
+        "publication_timestamp_policy",
+        "availability_lag",
+        "point_in_time_join_rule",
+        "price_field_policy",
+        "corporate_action_policy"
+      ],
+      "properties": {
+        "source_contract_id": { "type": "string", "pattern": "^[A-Z0-9_]+$" },
+        "status": { "type": "string", "enum": ["CLOSED", "EMPIRICAL", "CONDITIONAL", "DIAGNOSTIC"] },
+        "provider": { "type": "string", "minLength": 1 },
+        "dataset": { "type": "string", "minLength": 1 },
+        "symbol_or_collection": { "type": "string", "minLength": 1 },
+        "field": { "type": "string", "minLength": 1 },
+        "frequency": { "type": "string", "minLength": 1 },
+        "timezone": { "type": "string", "minLength": 1 },
+        "adjustment_policy": { "type": "string", "minLength": 1 },
+        "vintage_policy": { "type": "string", "minLength": 1 },
+        "freshness_rule": { "type": "string", "minLength": 1 },
+        "missing_rule": { "type": "string", "minLength": 1 },
+        "splice_policy": { "type": "string", "minLength": 1 },
+        "dataset_version": { "type": "string", "minLength": 1 },
+        "source_tier": { "type": "string", "minLength": 1 },
+        "snapshot_paths": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "snapshot_sha256": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        },
+        "refresh_policy": { "type": "string", "minLength": 1 },
+        "calendar": { "type": "string", "minLength": 1 },
+        "observation_timestamp_policy": { "type": "string", "minLength": 1 },
+        "publication_timestamp_policy": { "type": "string", "minLength": 1 },
+        "availability_lag": { "type": "string", "minLength": 1 },
+        "point_in_time_join_rule": { "type": "string", "minLength": 1 },
+        "price_field_policy": { "type": "string", "minLength": 1 },
+        "corporate_action_policy": { "type": "string", "minLength": 1 },
+        "notes": { "type": "string" }
+      }
+    },
+    "range": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "minimum": { "type": ["number", "null"] },
+        "maximum": { "type": ["number", "null"] },
+        "unbounded": { "type": "boolean", "const": true },
+        "enum": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": ["string", "number", "boolean"] },
+          "uniqueItems": true
+        },
+        "description": { "type": "string" }
+      },
+      "anyOf": [
+        { "required": ["minimum"] },
+        { "required": ["maximum"] },
+        { "required": ["unbounded"] },
+        { "required": ["enum"] },
+        { "required": ["description"] }
+      ]
+    },
+    "field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field_id",
+        "category",
+        "role",
+        "data_type",
+        "shape",
+        "unit",
+        "range",
+        "polarity",
+        "monotonicity_assertion",
+        "nullable",
+        "null_rule",
+        "status",
+        "source_contract_ids",
+        "lookback",
+        "freshness_rule",
+        "consumers",
+        "design_refs",
+        "description"
+      ],
+      "properties": {
+        "field_id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "category": {
+          "type": "string",
+          "enum": [
+            "identity",
+            "raw_input",
+            "data_quality",
+            "direction",
+            "breadth",
+            "risk_appetite",
+            "stability",
+            "condition",
+            "veto_cap",
+            "state",
+            "crisis",
+            "trending",
+            "impulse",
+            "confidence"
+          ]
+        },
+        "role": { "type": "string", "enum": ["core", "explainability", "state", "raw", "diagnostic"] },
+        "data_type": { "type": "string", "enum": ["string", "integer", "number", "boolean", "timestamp", "array", "object"] },
+        "shape": { "type": "string", "enum": ["scalar", "list", "map", "collection"] },
+        "unit": { "type": "string", "minLength": 1 },
+        "range": { "$ref": "#/$defs/range" },
+        "polarity": { "type": "string", "enum": ["supportive_positive", "adverse_positive", "signed_directional", "non_directional"] },
+        "monotonicity_assertion": { "type": "string", "minLength": 1 },
+        "nullable": { "type": "boolean" },
+        "null_rule": { "type": "string", "minLength": 1 },
+        "status": { "type": "string", "enum": ["CLOSED", "EMPIRICAL", "CONDITIONAL", "DIAGNOSTIC"] },
+        "source_contract_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "pattern": "^[A-Z0-9_]+$" },
+          "uniqueItems": true
+        },
+        "lookback": { "type": "string", "minLength": 1 },
+        "freshness_rule": { "type": "string", "minLength": 1 },
+        "consumers": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "design_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "description": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

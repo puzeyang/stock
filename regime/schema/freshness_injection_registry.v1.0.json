@@ -1,0 +1,592 @@
+{
+  "registry_version": "1.0",
+  "specification": "research/regime/docs/Freshness_Threshold_Experiment_v1.0.md",
+  "status": "FROZEN",
+  "notes": "FROZEN per discussion Message[154] (CHATGPT's independent-retest PASS confirming Message[153]'s hashes, authorizing the freeze transition per specification §7's gate). Holdout entries are registered here (dates and metadata only) but MUST NOT have their metrics computed or reported until the Stage-2 ceiling is frozen per the specification's Section 6 — this registry-level freeze authorizes Stage 1 (development-split metric computation) only, not Stage 2/3. This registry file itself contains no outcome data. Freeze record: this status/notes field and the specification's Status header/§9 freeze entry are the only content changed by the freeze transition; no injection dates, splits, contracts, candidate grids, metrics, selection rules, calendar contents, or holdout policy were altered.",
+  "traceability": {
+    "source_commit": "4dab6d1103660775a2252a093afb18a95fc5ae99",
+    "source_tree_state": "dirty \u2014 uncommitted changes present at build time (git status --porcelain showed modified/untracked files unrelated to this registry); this content-addressed file's own SHA-256 is the authoritative identity for its content regardless of tree state",
+    "design_document": "research/regime/docs/Market_Regime_Design_v5.1.md",
+    "design_document_sha256": "ee9414342b07b2033f77a8a2365406b809eed97bfa778eb260e2f5130288af87",
+    "manifest_at_registry_build": "research/regime/schema/market_regime_fields.v5.1.json",
+    "manifest_sha256_at_registry_build": "761b07e8f8471444664da4a48147003308c096bfb83fa5758b480bda469d4c7b",
+    "manifest_schema_at_registry_build": "research/regime/schema/market_regime_field_manifest.schema.v1.0.0.json",
+    "manifest_schema_sha256_at_registry_build": "9be0655ba33b4379ba3bedafa64037206e012702f1bc829e67560c9700a5109d",
+    "specification": "research/regime/docs/Freshness_Threshold_Experiment_v1.0.md",
+    "specification_sha256_at_registry_build": "c5899dfc7359eab220e1aeba070474800f6bf19b49c10e9615597cf3adde9a0a",
+    "verifier": "research/regime/tools/verify_freshness_registry.py",
+    "verifier_sha256_at_registry_build": "60145df95c12deb6aa5721af088aec1b12c372cb3f929d28813200376586d242",
+    "expected_session_calendar": "research/regime/schema/expected_session_calendar.v1.0.json",
+    "expected_session_calendar_sha256_at_registry_build": "e51f745f9efff78516f0f2f3770f62699356c1fb639e0f0c10050cf75d199188",
+    "expected_session_calendar_builder": "research/regime/tools/build_expected_session_calendar.py",
+    "expected_session_calendar_builder_sha256_at_registry_build": "cded84d55e709261f8f1206204b4eb35d2d5c4fff279eb1cdb6a861f4388c5ed"
+  },
+  "injections": [
+    {
+      "injection_id": "XNYS-DEV-ORD-001",
+      "family": "XNYS_ETF_BREADTH",
+      "contract_ids": [
+        "BENCHMARK_V5_1",
+        "BREADTH_V5_1",
+        "QQQ_V5_1",
+        "IWM_V5_1"
+      ],
+      "outage_length": 1,
+      "start_date": "2019-08-15",
+      "selection_rationale": "Ordinary-regime single-session gap.",
+      "calendar_status_at_injection": "regular XNYS session, confirmed by both CLAUDE and CHATGPT across SPY, all nine sector ETFs, QQQ, and IWM (msg 130, msg 134 item 5)",
+      "surrounding_completeness": "no natural multi-day gap within 5 sessions either side",
+      "regime_stratum": "ordinary",
+      "split": "development",
+      "registered_at": "2026-08-25T13:37:00Z",
+      "registered_by": "CLAUDE"
+    },
+    {
+      "injection_id": "XNYS-DEV-CRI-001",
+      "family": "XNYS_ETF_BREADTH",
+      "contract_ids": [
+        "BENCHMARK_V5_1",
+        "BREADTH_V5_1",
+        "QQQ_V5_1",
+        "IWM_V5_1"
+      ],
+      "outage_length": 2,
+      "start_date": "2020-04-15",
+      "selection_rationale": "Crisis-regime (COVID drawdown/early-recovery period) two-session gap.",
+      "calendar_status_at_injection": "regular XNYS session, confirmed by both CLAUDE and CHATGPT across SPY, all nine sector ETFs, QQQ, and IWM (msg 130, msg 134 item 5)",
+      "surrounding_completeness": "no natural multi-day gap within 5 sessions either side",
+      "regime_stratum": "crisis",
+      "split": "development",
+      "registered_at": "2026-08-25T13:37:00Z",
+      "registered_by": "CLAUDE"
+    },
+    {
+      "injection_id": "XNYS-DEV-TRD-001",
+      "family": "XNYS_ETF_BREADTH",
+      "contract_ids": [
+        "BENCHMARK_V5_1",
+        "BREADTH_V5_1",
+        "QQQ_V5_1",
+        "IWM_V5_1"
+      ],
+      "outage_length": 3,
+      "start_date": "2021-11-15",
+      "selection_rationale": "Trend-regime (2021 bull market) three-session gap.",
+      "calendar_status_at_injection": "regular XNYS session, confirmed by both CLAUDE and CHATGPT across SPY, all nine sector ETFs, QQQ, and IWM (msg 130, msg 134 item 5)",
+      "surrounding_completeness": "no natural multi-day gap within 5 sessions either side",
+      "regime_stratum": "trend",
+      "split": "development",
+      "registered_at": "2026-08-25T13:37:00Z",
+      "registered_by": "CLAUDE"
+    },
+    {
+      "injection_id": "XNYS-HOLD-001",
+      "family": "XNYS_ETF_BREADTH",
+      "contract_ids": [
+        "BENCHMARK_V5_1",
+        "BREADTH_V5_1",
+        "QQQ_V5_1",
+        "IWM_V5_1"
+      ],
+      "outage_length": 5,
+      "start_date": "2022-06-15",
+      "selection_rationale": "Held-out anchor, distinct from all development anchors. Reserved for one-time Stage-3 application only.",
+      "calendar_status_at_injection": "regular XNYS session, confirmed by both CLAUDE and CHATGPT across SPY, all nine sector ETFs, QQQ, and IWM (msg 130, msg 134 item 5)",
+      "surrounding_completeness": "no natural multi-day gap within 5 sessions either side",
+      "regime_stratum": "trend",
+      "split": "holdout",
+      "registered_at": "2026-08-25T13:37:00Z",
+      "registered_by": "CLAUDE"
+    },
+    {
+      "injection_id": "CBOE-DEV-ORD-001",
+      "family": "CBOE_VIX",
+      "contract_ids": [
+        "VIX_V5_1",
+        "VIX9D_V5_1",
+        "VIX3M_DIAGNOSTIC_V5_1"
+      ],
+      "outage_length": 1,
+      "start_date": "2019-08-15",
+      "selection_rationale": "Same ordinary-regime anchor date as XNYS-DEV-ORD-001, applied to the Cboe VIX-family calendar for cross-family comparability.",
+      "calendar_status_at_injection": "regular XNYS-aligned index session, confirmed by both CLAUDE and CHATGPT across VIX/VIX9D/VIX3M (msg 130, msg 134 item 5)",
+      "surrounding_completeness": "no natural multi-day gap within 5 sessions either side",
+      "regime_stratum": "ordinary",
+      "split": "development",
+      "registered_at": "2026-08-25T13:37:00Z",
+      "registered_by": "CLAUDE"
+    },
+    {
+      "injection_id": "CBOE-DEV-CRI-001",
+      "family": "CBOE_VIX",
+      "contract_ids": [
+        "VIX_V5_1",
+        "VIX9D_V5_1",
+        "VIX3M_DIAGNOSTIC_V5_1"
+      ],
+      "outage_length": 2,
+      "start_date": "2020-04-15",
+      "selection_rationale": "Same crisis-regime anchor date as XNYS-DEV-CRI-001, applied to the Cboe VIX-family calendar.",
+      "calendar_status_at_injection": "regular XNYS-aligned index session, confirmed by both CLAUDE and CHATGPT across VIX/VIX9D/VIX3M (msg 130, msg 134 item 5)",
+      "surrounding_completeness": "no natural multi-day gap within 5 sessions either side",
+      "regime_stratum": "crisis",
+      "split": "development",
+      "registered_at": "2026-08-25T13:37:00Z",
+      "registered_by": "CLAUDE"
+    },
+    {
+      "injection_id": "CBOE-DEV-TRD-001",
+      "family": "CBOE_VIX",
+      "contract_ids": [
+        "VIX_V5_1",
+        "VIX9D_V5_1",
+        "VIX3M_DIAGNOSTIC_V5_1"
+      ],
+      "outage_length": 2,
+      "start_date": "2021-11-15",
+      "selection_rationale": "Same trend-regime anchor date as XNYS-DEV-TRD-001, added to satisfy the minimum coverage matrix's trend-stratum requirement for Cboe (spec Section 1.1).",
+      "calendar_status_at_injection": "regular XNYS-aligned index session, confirmed by both CLAUDE and CHATGPT across VIX/VIX9D/VIX3M (msg 130, msg 134 item 5)",
+      "surrounding_completeness": "no natural multi-day gap within 5 sessions either side",
+      "regime_stratum": "trend",
+      "split": "development",
+      "registered_at": "2026-08-25T13:53:00Z",
+      "registered_by": "CLAUDE"
+    },
+    {
+      "injection_id": "CBOE-HOLD-001",
+      "family": "CBOE_VIX",
+      "contract_ids": [
+        "VIX_V5_1",
+        "VIX9D_V5_1",
+        "VIX3M_DIAGNOSTIC_V5_1"
+      ],
+      "outage_length": 5,
+      "start_date": "2022-06-15",
+      "selection_rationale": "Held-out anchor, same date as XNYS-HOLD-001 for cross-family comparability. Reserved for one-time Stage-3 application only.",
+      "calendar_status_at_injection": "regular XNYS-aligned index session, confirmed by both CLAUDE and CHATGPT across VIX/VIX9D/VIX3M (msg 130, msg 134 item 5)",
+      "surrounding_completeness": "no natural multi-day gap within 5 sessions either side",
+      "regime_stratum": "trend",
+      "split": "holdout",
+      "registered_at": "2026-08-25T13:37:00Z",
+      "registered_by": "CLAUDE"
+    },
+    {
+      "injection_id": "FRED-DEV-ORD-001",
+      "family": "FRED_OAS",
+      "contract_ids": [
+        "OAS_V5_1"
+      ],
+      "outage_length": 1,
+      "start_date": "2023-09-05",
+      "selection_rationale": "CORRECTED per msg 146 round-7 review: the prior anchor 2023-08-28 was only 1 business day after the OAS file's actual coverage start (2023-08-25), so its required ±5 expected-business-day window reached 4 business days before the file's own coverage begins — not a real outage, an artifact of the anchor sitting too close to the pinned snapshot's own left edge. Replaced with 2023-09-05, whose full ±5-business-day window (2023-08-28 through 2023-09-12) is entirely within the file's actual coverage and confirmed present with zero missing sessions. Same ordinary regime, same general period, same outage_length. UPDATED per msg 150 round-9: the window is now checked against research/regime/schema/expected_session_calendar.v1.0.json's pinned FRED_OAS session list, independently derived from the plain US federal holiday calendar (never from the OAS file's own rows) by research/regime/tools/build_expected_session_calendar.py — re-verified against the current artifact, same window, same zero-missing result.",
+      "calendar_status_at_injection": "regular FRED business day (Tuesday); expected per the pinned expected_session_calendar.v1.0.json artifact's independently-derived FRED_OAS federal-holiday-calendar session list, and confirmed present as a real row in the local BAMLH0A0HYM2.csv snapshot",
+      "surrounding_completeness": "confirmed via the verifier's calendar-artifact check: all 11 expected sessions in the ±5 window (2023-08-28 through 2023-09-12), per the pinned expected_session_calendar.v1.0.json artifact, are present as real rows in BAMLH0A0HYM2.csv, zero missing",
+      "regime_stratum": "ordinary",
+      "split": "development",
+      "registered_at": "2026-08-25T18:55:00Z",
+      "registered_by": "CLAUDE",
+      "superseded_entry": {
+        "original_start_date": "2023-08-28",
+        "original_registered_at": "2026-08-25T13:37:00Z",
+        "correction_registered_at": "2026-08-25T18:55:00Z",
+        "correction_reason": "Anchor was too close to the OAS file's own coverage start (2023-08-25); a calendar-independent ±5-business-day window check (first added in the verifier's v5 to fix the FRED self-reference circularity ChatGPT identified in msg 146 item 1, later re-implemented in v6/round-9 against the pinned expected_session_calendar.v1.0.json artifact for genuine independence per msg 150 item 1) correctly detected that 4 expected sessions before the anchor fall entirely outside the pinned snapshot's actual coverage."
+      }
+    },
+    {
+      "injection_id": "FRED-DEV-ORD-002",
+      "family": "FRED_OAS",
+      "contract_ids": [
+        "OAS_V5_1"
+      ],
+      "outage_length": 3,
+      "start_date": "2024-06-10",
+      "selection_rationale": "Second ordinary-regime FRED anchor, longer outage length, within the OAS coverage window.",
+      "calendar_status_at_injection": "regular FRED business day; row presence confirmed by CHATGPT (msg 134 item 5)",
+      "surrounding_completeness": "no natural multi-day gap immediately surrounding this date in the OAS coverage window",
+      "regime_stratum": "ordinary",
+      "split": "development",
+      "registered_at": "2026-08-25T13:37:00Z",
+      "registered_by": "CLAUDE"
+    },
+    {
+      "injection_id": "FRED-DEV-CRI-001",
+      "family": "FRED_OAS",
+      "contract_ids": [
+        "OAS_V5_1"
+      ],
+      "outage_length": 1,
+      "start_date": "2024-08-05",
+      "selection_rationale": "Crisis-adjacent anchor: 2024-08-05 was the widely documented early-August 2024 volatility spike session; added to satisfy the minimum coverage matrix's crisis-stratum requirement for FRED (spec Section 1.1), since ordinary-regime-only FRED evidence cannot support any claim about FRED behavior when the CRISIS domain's own credit-stress confirmation is most active.",
+      "calendar_status_at_injection": "regular FRED business day (Monday); row confirmed present in the local BAMLH0A0HYM2.csv snapshot",
+      "surrounding_completeness": "row presence confirmed for the anchor date; multi-day surrounding-gap check against the local snapshot not yet independently re-verified by CHATGPT as of this revision",
+      "regime_stratum": "crisis",
+      "split": "development",
+      "registered_at": "2026-08-25T13:53:00Z",
+      "registered_by": "CLAUDE"
+    },
+    {
+      "injection_id": "FRED-DEV-TRD-001",
+      "family": "FRED_OAS",
+      "contract_ids": [
+        "OAS_V5_1"
+      ],
+      "outage_length": 1,
+      "start_date": "2024-11-15",
+      "selection_rationale": "Trend-regime anchor (late-2024 rally period); added to satisfy the minimum coverage matrix's trend-stratum requirement for FRED (spec Section 1.1).",
+      "calendar_status_at_injection": "regular FRED business day (Friday); row confirmed present in the local BAMLH0A0HYM2.csv snapshot",
+      "surrounding_completeness": "row presence confirmed for the anchor date; multi-day surrounding-gap check against the local snapshot not yet independently re-verified by CHATGPT as of this revision",
+      "regime_stratum": "trend",
+      "split": "development",
+      "registered_at": "2026-08-25T13:53:00Z",
+      "registered_by": "CLAUDE"
+    },
+    {
+      "injection_id": "FRED-HOLD-001",
+      "family": "FRED_OAS",
+      "contract_ids": [
+        "OAS_V5_1"
+      ],
+      "outage_length": 5,
+      "start_date": "2025-03-17",
+      "selection_rationale": "CORRECTED per ChatGPT msg 134 item 1: the prior anchor 2025-03-15 was a Saturday, absent from the pinned OAS CSV, and invalid. Replaced with 2025-03-17 (Monday), confirmed present in the local BAMLH0A0HYM2.csv snapshot (row value 3.18), within the ordinary regime window and the OAS coverage period. Reserved for one-time Stage-3 application only.",
+      "calendar_status_at_injection": "regular FRED business day (Monday), confirmed present via local grep of BAMLH0A0HYM2.csv",
+      "surrounding_completeness": "row presence confirmed for 2025-03-10 through 2025-03-24 in the local snapshot with no gap wider than the intervening weekend; live-FRED cross-check for historical publication/arrival classification remains outstanding per msg 134 item 5's own scope note (row presence only, not arrival classification)",
+      "regime_stratum": "ordinary",
+      "split": "holdout",
+      "registered_at": "2026-08-25T13:37:00Z",
+      "registered_by": "CLAUDE",
+      "superseded_entry": {
+        "original_start_date": "2025-03-15",
+        "original_registered_at": "2026-08-25T13:37:00Z",
+        "correction_registered_at": "2026-08-25T13:53:00Z",
+        "correction_reason": "Original date was a Saturday, absent from the pinned OAS CSV; invalid per Section 4.1 exclusion rules. Replaced with 2025-03-17 (Monday), confirmed present."
+      }
+    },
+    {
+      "injection_id": "XNYS-HOLD-002",
+      "family": "XNYS_ETF_BREADTH",
+      "contract_ids": [
+        "BENCHMARK_V5_1",
+        "BREADTH_V5_1",
+        "QQQ_V5_1",
+        "IWM_V5_1"
+      ],
+      "outage_length": 5,
+      "start_date": "2018-02-14",
+      "selection_rationale": "Second held-out anchor (crisis-adjacent: Feb 2018 'Volmageddon' volatility event), added to satisfy the two-independent-holdout-entry minimum (spec Section 1.1, ChatGPT msg 136 item 1) so the confirmatory rate/duration claim does not rest on a single held-out event.",
+      "calendar_status_at_injection": "regular XNYS session; row presence confirmed by CLAUDE via direct file check",
+      "surrounding_completeness": "confirmed present with normal single-day neighbor spacing",
+      "regime_stratum": "crisis",
+      "split": "holdout",
+      "registered_at": "2026-08-25T13:57:58Z",
+      "registered_by": "CLAUDE"
+    },
+    {
+      "injection_id": "CBOE-DEV-TRD-002",
+      "family": "CBOE_VIX",
+      "contract_ids": [
+        "VIX_V5_1",
+        "VIX9D_V5_1",
+        "VIX3M_DIAGNOSTIC_V5_1"
+      ],
+      "outage_length": 3,
+      "start_date": "2021-11-15",
+      "selection_rationale": "Fills the missing length-3 development cell for Cboe (spec Section 4/\u00a71.1 require {1,2,3,5} per family); reuses the already-verified trend-stratum anchor date at a longer outage length.",
+      "calendar_status_at_injection": "regular XNYS-aligned index session, confirmed by both CLAUDE and CHATGPT across VIX/VIX9D/VIX3M (msg 130, msg 134 item 5)",
+      "surrounding_completeness": "no natural multi-day gap within 5 sessions either side",
+      "regime_stratum": "trend",
+      "split": "development",
+      "registered_at": "2026-08-25T13:57:58Z",
+      "registered_by": "CLAUDE"
+    },
+    {
+      "injection_id": "CBOE-DEV-ORD-002",
+      "family": "CBOE_VIX",
+      "contract_ids": [
+        "VIX_V5_1",
+        "VIX9D_V5_1",
+        "VIX3M_DIAGNOSTIC_V5_1"
+      ],
+      "outage_length": 5,
+      "start_date": "2023-05-15",
+      "selection_rationale": "Fills the missing length-5 development cell for Cboe (spec Section 4 requires {1,2,3,5} in the development split, not only holdout).",
+      "calendar_status_at_injection": "regular XNYS-aligned index session; row presence confirmed by CLAUDE via direct file check",
+      "surrounding_completeness": "confirmed present with normal single-day neighbor spacing",
+      "regime_stratum": "ordinary",
+      "split": "development",
+      "registered_at": "2026-08-25T13:57:58Z",
+      "registered_by": "CLAUDE"
+    },
+    {
+      "injection_id": "CBOE-HOLD-002",
+      "family": "CBOE_VIX",
+      "contract_ids": [
+        "VIX_V5_1",
+        "VIX9D_V5_1",
+        "VIX3M_DIAGNOSTIC_V5_1"
+      ],
+      "outage_length": 5,
+      "start_date": "2018-02-14",
+      "selection_rationale": "Second held-out anchor, same date as XNYS-HOLD-002 for cross-family comparability, satisfying the two-holdout-entry minimum.",
+      "calendar_status_at_injection": "regular XNYS-aligned index session; row presence confirmed by CLAUDE via direct file check",
+      "surrounding_completeness": "confirmed present with normal single-day neighbor spacing",
+      "regime_stratum": "crisis",
+      "split": "holdout",
+      "registered_at": "2026-08-25T13:57:58Z",
+      "registered_by": "CLAUDE"
+    },
+    {
+      "injection_id": "FRED-DEV-ORD-003",
+      "family": "FRED_OAS",
+      "contract_ids": [
+        "OAS_V5_1"
+      ],
+      "outage_length": 2,
+      "start_date": "2023-11-15",
+      "selection_rationale": "Fills the missing length-2 development cell for FRED (spec Section 4 requires {1,2,3,5} per family); row presence confirmed directly against the local OAS CSV.",
+      "calendar_status_at_injection": "regular FRED business day; row confirmed present in the local BAMLH0A0HYM2.csv snapshot",
+      "surrounding_completeness": "row presence confirmed for the anchor date within the OAS coverage window",
+      "regime_stratum": "ordinary",
+      "split": "development",
+      "registered_at": "2026-08-25T13:57:58Z",
+      "registered_by": "CLAUDE"
+    },
+    {
+      "injection_id": "FRED-DEV-TRD-002",
+      "family": "FRED_OAS",
+      "contract_ids": [
+        "OAS_V5_1"
+      ],
+      "outage_length": 5,
+      "start_date": "2024-03-15",
+      "selection_rationale": "Fills the missing length-5 development cell for FRED (spec Section 4 requires {1,2,3,5} in the development split, not only holdout); row presence confirmed directly against the local OAS CSV.",
+      "calendar_status_at_injection": "regular FRED business day; row confirmed present in the local BAMLH0A0HYM2.csv snapshot",
+      "surrounding_completeness": "row presence confirmed for the anchor date within the OAS coverage window",
+      "regime_stratum": "trend",
+      "split": "development",
+      "registered_at": "2026-08-25T13:57:58Z",
+      "registered_by": "CLAUDE"
+    },
+    {
+      "injection_id": "FRED-HOLD-002",
+      "family": "FRED_OAS",
+      "contract_ids": [
+        "OAS_V5_1"
+      ],
+      "outage_length": 5,
+      "start_date": "2025-06-16",
+      "selection_rationale": "Second held-out FRED anchor, distinct from FRED-HOLD-001 and from all development anchors including FRED-DEV-ORD-003 (2023-11-15, corrected to avoid a shared-anchor-date leakage risk between the development and holdout splits, self-caught during this correction pass), satisfying the two-holdout-entry minimum.",
+      "calendar_status_at_injection": "regular FRED business day (Monday); row confirmed present in the local BAMLH0A0HYM2.csv snapshot",
+      "surrounding_completeness": "row presence confirmed for the anchor date within the OAS coverage window",
+      "regime_stratum": "ordinary",
+      "split": "holdout",
+      "registered_at": "2026-08-25T13:57:58Z",
+      "registered_by": "CLAUDE"
+    },
+    {
+      "injection_id": "XNYS-DEV-ORD-002",
+      "family": "XNYS_ETF_BREADTH",
+      "contract_ids": [
+        "BENCHMARK_V5_1",
+        "BREADTH_V5_1",
+        "QQQ_V5_1",
+        "IWM_V5_1"
+      ],
+      "outage_length": 5,
+      "start_date": "2019-05-15",
+      "selection_rationale": "Fills the missing length-5 development cell for XNYS (spec Section 4 requires {1,2,3,5} in the development split, not only holdout).",
+      "calendar_status_at_injection": "regular XNYS session; row presence confirmed by CLAUDE via direct file check",
+      "surrounding_completeness": "confirmed present with normal single-day neighbor spacing",
+      "regime_stratum": "ordinary",
+      "split": "development",
+      "registered_at": "2026-08-25T13:57:58Z",
+      "registered_by": "CLAUDE"
+    },
+    {
+      "injection_id": "XNYS-HOLD-003",
+      "family": "XNYS_ETF_BREADTH",
+      "contract_ids": [
+        "BENCHMARK_V5_1",
+        "BREADTH_V5_1",
+        "QQQ_V5_1",
+        "IWM_V5_1"
+      ],
+      "outage_length": 1,
+      "start_date": "2017-09-15",
+      "selection_rationale": "Holdout length-1 entry, ordinary regime, added per msg 138 item 1 (Section 4 requires {1,2,3,5} in both development and holdout).",
+      "calendar_status_at_injection": "regular XNYS session; row presence confirmed by CLAUDE via direct file check",
+      "surrounding_completeness": "confirmed present with normal single-day neighbor spacing",
+      "regime_stratum": "ordinary",
+      "split": "holdout",
+      "registered_at": "2026-08-25T22:03:00Z",
+      "registered_by": "CLAUDE"
+    },
+    {
+      "injection_id": "XNYS-HOLD-004",
+      "family": "XNYS_ETF_BREADTH",
+      "contract_ids": [
+        "BENCHMARK_V5_1",
+        "BREADTH_V5_1",
+        "QQQ_V5_1",
+        "IWM_V5_1"
+      ],
+      "outage_length": 2,
+      "start_date": "2022-01-14",
+      "selection_rationale": "Holdout length-2 entry, trend/rotation-adjacent regime (Jan 2022 growth selloff onset), added per msg 138 item 1.",
+      "calendar_status_at_injection": "regular XNYS session; row presence confirmed by CLAUDE via direct file check",
+      "surrounding_completeness": "confirmed present with normal single-day neighbor spacing",
+      "regime_stratum": "trend",
+      "split": "holdout",
+      "registered_at": "2026-08-25T22:03:00Z",
+      "registered_by": "CLAUDE"
+    },
+    {
+      "injection_id": "XNYS-HOLD-005",
+      "family": "XNYS_ETF_BREADTH",
+      "contract_ids": [
+        "BENCHMARK_V5_1",
+        "BREADTH_V5_1",
+        "QQQ_V5_1",
+        "IWM_V5_1"
+      ],
+      "outage_length": 3,
+      "start_date": "2020-10-15",
+      "selection_rationale": "Holdout length-3 entry, crisis-adjacent regime (COVID-recovery volatility period), added per msg 138 item 1.",
+      "calendar_status_at_injection": "regular XNYS session; row presence confirmed by CLAUDE via direct file check",
+      "surrounding_completeness": "confirmed present with normal single-day neighbor spacing",
+      "regime_stratum": "crisis",
+      "split": "holdout",
+      "registered_at": "2026-08-25T22:03:00Z",
+      "registered_by": "CLAUDE"
+    },
+    {
+      "injection_id": "CBOE-HOLD-003",
+      "family": "CBOE_VIX",
+      "contract_ids": [
+        "VIX_V5_1",
+        "VIX9D_V5_1",
+        "VIX3M_DIAGNOSTIC_V5_1"
+      ],
+      "outage_length": 1,
+      "start_date": "2017-09-15",
+      "selection_rationale": "Holdout length-1 entry, ordinary regime, same anchor as XNYS-HOLD-003 for cross-family comparability, added per msg 138 item 1.",
+      "calendar_status_at_injection": "regular XNYS-aligned index session; row presence confirmed by CLAUDE via direct file check",
+      "surrounding_completeness": "confirmed present with normal single-day neighbor spacing",
+      "regime_stratum": "ordinary",
+      "split": "holdout",
+      "registered_at": "2026-08-25T22:03:00Z",
+      "registered_by": "CLAUDE"
+    },
+    {
+      "injection_id": "CBOE-HOLD-004",
+      "family": "CBOE_VIX",
+      "contract_ids": [
+        "VIX_V5_1",
+        "VIX9D_V5_1",
+        "VIX3M_DIAGNOSTIC_V5_1"
+      ],
+      "outage_length": 2,
+      "start_date": "2022-01-14",
+      "selection_rationale": "Holdout length-2 entry, trend/rotation-adjacent regime, same anchor as XNYS-HOLD-004, added per msg 138 item 1.",
+      "calendar_status_at_injection": "regular XNYS-aligned index session; row presence confirmed by CLAUDE via direct file check",
+      "surrounding_completeness": "confirmed present with normal single-day neighbor spacing",
+      "regime_stratum": "trend",
+      "split": "holdout",
+      "registered_at": "2026-08-25T22:03:00Z",
+      "registered_by": "CLAUDE"
+    },
+    {
+      "injection_id": "CBOE-HOLD-005",
+      "family": "CBOE_VIX",
+      "contract_ids": [
+        "VIX_V5_1",
+        "VIX9D_V5_1",
+        "VIX3M_DIAGNOSTIC_V5_1"
+      ],
+      "outage_length": 3,
+      "start_date": "2020-10-15",
+      "selection_rationale": "Holdout length-3 entry, crisis-adjacent regime, same anchor as XNYS-HOLD-005, added per msg 138 item 1.",
+      "calendar_status_at_injection": "regular XNYS-aligned index session; row presence confirmed by CLAUDE via direct file check",
+      "surrounding_completeness": "confirmed present with normal single-day neighbor spacing",
+      "regime_stratum": "crisis",
+      "split": "holdout",
+      "registered_at": "2026-08-25T22:03:00Z",
+      "registered_by": "CLAUDE"
+    },
+    {
+      "injection_id": "FRED-HOLD-003",
+      "family": "FRED_OAS",
+      "contract_ids": [
+        "OAS_V5_1"
+      ],
+      "outage_length": 1,
+      "start_date": "2024-01-16",
+      "selection_rationale": "Holdout length-1 entry, ordinary regime, added per msg 138 item 1; row presence confirmed against the local OAS CSV.",
+      "calendar_status_at_injection": "regular FRED business day; row confirmed present in the local BAMLH0A0HYM2.csv snapshot",
+      "surrounding_completeness": "row presence confirmed for the anchor date within the OAS coverage window",
+      "regime_stratum": "ordinary",
+      "split": "holdout",
+      "registered_at": "2026-08-25T22:03:00Z",
+      "registered_by": "CLAUDE"
+    },
+    {
+      "injection_id": "FRED-HOLD-004",
+      "family": "FRED_OAS",
+      "contract_ids": [
+        "OAS_V5_1"
+      ],
+      "outage_length": 2,
+      "start_date": "2024-09-16",
+      "selection_rationale": "Holdout length-2 entry, crisis-adjacent regime (early-Sept 2024 rate-cut/vol period), added per msg 138 item 1, which specifically flagged FRED's holdout as ordinary-only; row presence confirmed against the local OAS CSV.",
+      "calendar_status_at_injection": "regular FRED business day; row confirmed present in the local BAMLH0A0HYM2.csv snapshot",
+      "surrounding_completeness": "row presence confirmed for the anchor date within the OAS coverage window",
+      "regime_stratum": "crisis",
+      "split": "holdout",
+      "registered_at": "2026-08-25T22:03:00Z",
+      "registered_by": "CLAUDE"
+    },
+    {
+      "injection_id": "FRED-HOLD-005",
+      "family": "FRED_OAS",
+      "contract_ids": [
+        "OAS_V5_1"
+      ],
+      "outage_length": 3,
+      "start_date": "2025-02-14",
+      "selection_rationale": "Holdout length-3 entry, trend regime, added per msg 138 item 1; row presence confirmed against the local OAS CSV.",
+      "calendar_status_at_injection": "regular FRED business day; row confirmed present in the local BAMLH0A0HYM2.csv snapshot",
+      "surrounding_completeness": "row presence confirmed for the anchor date within the OAS coverage window",
+      "regime_stratum": "trend",
+      "split": "holdout",
+      "registered_at": "2026-08-25T22:03:00Z",
+      "registered_by": "CLAUDE"
+    }
+  ],
+  "coverage_verification": {
+    "note": "v2 (msg 140 correction round): the verifier no longer only checks weekday-ness and set membership. It derives every contract's real snapshot file path from the manifest, reads the actual pinned CSV rows, and confirms each registered anchor date is a genuine present observation in every one of its declared source files, plus a real >4-calendar-day surrounding-gap check against those same rows \u2014 not a declarative claim.",
+    "verifier": "research/regime/tools/verify_freshness_registry.py",
+    "how_to_run": "python3 research/regime/tools/verify_freshness_registry.py",
+    "verifier_checks": "Per-family {1,2,3,5} outage-length coverage in BOTH development and holdout splits; minimum 2 holdout entries per family; all 3 regime strata present overall and within holdout; zero development/holdout start_date overlap per family; unique injection_id; required-field presence and type/nonempty validity; split/regime_stratum/outage_length/registered_by value validity; start_date ISO parse and weekend check; registered_at exact ISO-8601-UTC format check; reason_code_contract exact-value match against the closed mapping (not just key presence); every entry's start_date verified present as a real row in every declared contract's actual pinned snapshot file, derived dynamically from the manifest; real surrounding-gap check (>4 calendar days) against those same rows."
+  },
+  "known_outstanding_items": [],
+  "verification_notes": [
+    "Row presence for every anchor date in this registry has been directly confirmed via local file checks, and is now additionally enforced automatically by the verifier (coverage_verification above) rather than only asserted in prose.",
+    "Per Section 4.1's clarification, live-FRED historical publication/arrival timestamp reconstruction is not required for injection eligibility \u2014 synthetic injections simulate a fetch outage (condition (b) by construction), not a claim about the provider's actual historical arrival time. Resolved by specification.",
+    "The specification_sha256_at_registry_build value in the traceability block is recomputed each time either file changes; it is not a placeholder."
+  ],
+  "reason_code_contract": {
+    "CURRENT": [
+      null,
+      "SOURCE_LATE_WITHIN_GRACE"
+    ],
+    "STALE": [
+      "SOURCE_STALE"
+    ],
+    "MISSING": [
+      "SOURCE_MISSING"
+    ],
+    "MISALIGNED": [
+      "SOURCE_MISALIGNED"
+    ]
+  }
+}

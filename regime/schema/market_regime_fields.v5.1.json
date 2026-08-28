@@ -1,0 +1,3118 @@
+{
+  "$schema": "market_regime_field_manifest.schema.v1.0.0.json",
+  "manifest_format_version": "1.0.0",
+  "schema_version": "5.1",
+  "feature_contract_version": "5.1",
+  "design_document": "regime/docs/Market_Regime_Design_v5.1.md",
+  "design_sha256": "ee9414342b07b2033f77a8a2365406b809eed97bfa778eb260e2f5130288af87",
+  "generated_at": "2026-08-25T07:00:00-04:00",
+  "status": "architecture_baseline",
+  "canonical_calendar": {
+    "calendar_id": "XNYS",
+    "timezone": "America/New_York",
+    "frequency": "daily_expected_session",
+    "session_semantics": "One record per expected XNYS session after required publications are available."
+  },
+  "source_contracts": [
+    {
+      "source_contract_id": "DERIVED_V5_1",
+      "status": "CLOSED",
+      "provider": "INTERNAL",
+      "dataset": "market_regime_v5.1_derived",
+      "symbol_or_collection": "DERIVED",
+      "field": "derived feature",
+      "frequency": "daily expected session",
+      "timezone": "America/New_York",
+      "adjustment_policy": "not applicable",
+      "vintage_policy": "Content-addressed snapshot; refresh requires a new dataset_version and hashes before release.",
+      "freshness_rule": "Refresh after each completed expected session; fail closed when the declared threshold is exceeded.",
+      "missing_rule": "Required-input failure propagates null with reason; no silent fill.",
+      "splice_policy": "No silent source splice within a published dataset version.",
+      "dataset_version": "snapshot-2026-08-25",
+      "source_tier": "internal",
+      "snapshot_paths": [
+        "regime/docs/Market_Regime_Design_v5.1.md"
+      ],
+      "snapshot_sha256": {
+        "regime/docs/Market_Regime_Design_v5.1.md": "ee9414342b07b2033f77a8a2365406b809eed97bfa778eb260e2f5130288af87"
+      },
+      "refresh_policy": "Run the versioned updater after each completed session; recompute hashes and bump dataset_version before adoption.",
+      "notes": "Normative derived-field contract.",
+      "calendar": "XNYS_EXPECTED_SESSION",
+      "observation_timestamp_policy": "as_of identifies the measurement session after all required source observations satisfy their point-in-time join rules.",
+      "publication_timestamp_policy": "Emission timestamp is recorded after calculation; replay restores the same versioned source snapshot and engine state.",
+      "availability_lag": "Inherits the maximum availability timestamp of every required direct and transitive source.",
+      "point_in_time_join_rule": "Emit only when every required input is available for the as_of session; otherwise emit unavailable/stale state with reason codes.",
+      "price_field_policy": "Not a raw price series; field selection is defined by the derived/output schema.",
+      "corporate_action_policy": "Corporate actions are not applicable to internal derived or persisted-state records; upstream source versions remain traceable."
+    },
+    {
+      "source_contract_id": "ENGINE_STATE_V5_1",
+      "status": "CLOSED",
+      "provider": "INTERNAL",
+      "dataset": "market_regime_v5.1_engine_state",
+      "symbol_or_collection": "ENGINE_STATE",
+      "field": "state",
+      "frequency": "daily expected session",
+      "timezone": "America/New_York",
+      "adjustment_policy": "not applicable",
+      "vintage_policy": "Content-addressed snapshot; refresh requires a new dataset_version and hashes before release.",
+      "freshness_rule": "Refresh after each completed expected session; fail closed when the declared threshold is exceeded.",
+      "missing_rule": "Required-input failure propagates null with reason; no silent fill.",
+      "splice_policy": "No silent source splice within a published dataset version.",
+      "dataset_version": "snapshot-2026-08-25",
+      "source_tier": "internal",
+      "snapshot_paths": [
+        "regime/docs/Market_Regime_Design_v5.1.md"
+      ],
+      "snapshot_sha256": {
+        "regime/docs/Market_Regime_Design_v5.1.md": "ee9414342b07b2033f77a8a2365406b809eed97bfa778eb260e2f5130288af87"
+      },
+      "refresh_policy": "Run the versioned updater after each completed session; recompute hashes and bump dataset_version before adoption.",
+      "notes": "Persisted replay-state contract.",
+      "calendar": "XNYS_EXPECTED_SESSION",
+      "observation_timestamp_policy": "as_of identifies the measurement session after all required source observations satisfy their point-in-time join rules.",
+      "publication_timestamp_policy": "Emission timestamp is recorded after calculation; replay restores the same versioned source snapshot and engine state.",
+      "availability_lag": "Inherits the maximum availability timestamp of every required direct and transitive source.",
+      "point_in_time_join_rule": "Emit only when every required input is available for the as_of session; otherwise emit unavailable/stale state with reason codes.",
+      "price_field_policy": "Not a raw price series; field selection is defined by the derived/output schema.",
+      "corporate_action_policy": "Corporate actions are not applicable to internal derived or persisted-state records; upstream source versions remain traceable."
+    },
+    {
+      "source_contract_id": "BENCHMARK_V5_1",
+      "status": "EMPIRICAL",
+      "provider": "Yahoo Finance via yfinance 0.2.66",
+      "dataset": "Yahoo Finance historical OHLCV snapshot",
+      "symbol_or_collection": "SPY",
+      "field": "adj_close",
+      "frequency": "daily expected session",
+      "timezone": "America/New_York",
+      "adjustment_policy": "Adjusted/total-return proxy; auto_adjust=false.",
+      "vintage_policy": "Content-addressed snapshot; refresh requires a new dataset_version and hashes before release.",
+      "freshness_rule": "Refresh after each completed expected session; fail closed when the declared threshold is exceeded.",
+      "missing_rule": "Required-input failure propagates null with reason; no silent fill.",
+      "splice_policy": "No silent source splice within a published dataset version.",
+      "dataset_version": "snapshot-2026-08-25",
+      "source_tier": "canonical_production",
+      "snapshot_paths": [
+        "research/data/raw/SPY.csv"
+      ],
+      "snapshot_sha256": {
+        "research/data/raw/SPY.csv": "4d14d2dd547554d00d82d5c242dd7aced6f4b7f02728feb60a77167ad15b7991"
+      },
+      "refresh_policy": "Run the versioned updater after each completed session; recompute hashes and bump dataset_version before adoption.",
+      "notes": "Pinned SPY benchmark; no within-version switching.",
+      "calendar": "XNYS",
+      "observation_timestamp_policy": "Date-only OHLCV row represents the completed XNYS regular session close at 16:00 America/New_York.",
+      "publication_timestamp_policy": "Snapshot retrieval timestamp is provenance; the bar is not treated as published until the provider returns a completed daily row.",
+      "availability_lag": "Usable for measurement decisions no earlier than the next XNYS session open after the observation session.",
+      "point_in_time_join_rule": "Join only to the next XNYS expected session; never use a same-session close to make a decision timestamped before that close.",
+      "price_field_policy": "Canonical calculations MUST read the provider-supplied adj_close CSV column. Raw open/high/low/close/volume are diagnostics only and MUST NOT substitute for adj_close.",
+      "corporate_action_policy": "Provider adj_close supplies split and cash-distribution adjustments. Any historical restatement, symbol substitution, mapping change, or changed duplicate-session resolution changes the snapshot hash and requires a new dataset_version; no silent splice or substitution. Adopted snapshots MUST contain one row per XNYS session."
+    },
+    {
+      "source_contract_id": "BREADTH_V5_1",
+      "status": "EMPIRICAL",
+      "provider": "Yahoo Finance via yfinance 0.2.66",
+      "dataset": "Yahoo Finance historical OHLCV snapshots",
+      "symbol_or_collection": "XLK,XLF,XLV,XLY,XLP,XLE,XLI,XLB,XLU",
+      "field": "adj_close",
+      "frequency": "daily expected session",
+      "timezone": "America/New_York",
+      "adjustment_policy": "Adjusted/total-return close; fixed denominator.",
+      "vintage_policy": "Content-addressed snapshot; refresh requires a new dataset_version and hashes before release.",
+      "freshness_rule": "Refresh after each completed expected session; fail closed when the declared threshold is exceeded.",
+      "missing_rule": "Required-input failure propagates null with reason; no silent fill.",
+      "splice_policy": "No silent source splice within a published dataset version.",
+      "dataset_version": "snapshot-2026-08-25",
+      "source_tier": "tier_2_fixed_nine_production",
+      "snapshot_paths": [
+        "research/data/raw/XLK.csv",
+        "research/data/raw/XLF.csv",
+        "research/data/raw/XLV.csv",
+        "research/data/raw/XLY.csv",
+        "research/data/raw/XLP.csv",
+        "research/data/raw/XLE.csv",
+        "research/data/raw/XLI.csv",
+        "research/data/raw/XLB.csv",
+        "research/data/raw/XLU.csv"
+      ],
+      "snapshot_sha256": {
+        "research/data/raw/XLK.csv": "4807cd9df78ed102a784390380122484f15e6510ea07931f562ce287868be722",
+        "research/data/raw/XLF.csv": "8dde1bd5d6f74bcae29236bac48124e957f465c37f8cded4384207000bfcc0de",
+        "research/data/raw/XLV.csv": "5025c837913f919cf75f589c4891bc87e1f286814e44626ff62b6cc7c0c7fa90",
+        "research/data/raw/XLY.csv": "a4bdb6f98c375bd3175ed91c64d1d5f89aac2f231c0b53c2f31c94bb7ff8f017",
+        "research/data/raw/XLP.csv": "a8eaf40026e32d303bc2552365aa1d58bbb6ab1a333dda4e21434a7fed6382f6",
+        "research/data/raw/XLE.csv": "95333ca2c8f6a7aa781964ab3f9394b2e19bce49e0fe625ff0dff7216e47efd9",
+        "research/data/raw/XLI.csv": "1a034e5077ffb2e47c65cff7953473bbc93819b352d4d3b0d0af9701ed309440",
+        "research/data/raw/XLB.csv": "d816b8cccbfc08e64623d086df380707a115d79dc655486ddaca7475888afcb9",
+        "research/data/raw/XLU.csv": "4cea5393e71ca4145fb35c9d7ff9bcbe7a022094c39f002d99ece932e51e9336"
+      },
+      "refresh_policy": "Run the versioned updater after each completed session; recompute hashes and bump dataset_version before adoption.",
+      "notes": "Fixed-nine history; no Tier-3 splice.",
+      "calendar": "XNYS",
+      "observation_timestamp_policy": "Date-only OHLCV row represents the completed XNYS regular session close at 16:00 America/New_York.",
+      "publication_timestamp_policy": "Snapshot retrieval timestamp is provenance; the bar is not treated as published until the provider returns a completed daily row.",
+      "availability_lag": "Usable for measurement decisions no earlier than the next XNYS session open after the observation session.",
+      "point_in_time_join_rule": "Join only to the next XNYS expected session; never use a same-session close to make a decision timestamped before that close.",
+      "price_field_policy": "Canonical calculations MUST read the provider-supplied adj_close CSV column. Raw open/high/low/close/volume are diagnostics only and MUST NOT substitute for adj_close.",
+      "corporate_action_policy": "Provider adj_close supplies split and cash-distribution adjustments. Any historical restatement, symbol substitution, mapping change, or changed duplicate-session resolution changes the snapshot hash and requires a new dataset_version; no silent splice or substitution. Adopted snapshots MUST contain one row per XNYS session."
+    },
+    {
+      "source_contract_id": "OAS_V5_1",
+      "status": "EMPIRICAL",
+      "provider": "Federal Reserve Bank of St. Louis FRED",
+      "dataset": "ICE BofA US High Yield Index Option-Adjusted Spread",
+      "symbol_or_collection": "BAMLH0A0HYM2",
+      "field": "BAMLH0A0HYM2",
+      "frequency": "daily business-day observation when published",
+      "timezone": "America/Chicago",
+      "adjustment_policy": "Not applicable; percent spread observation.",
+      "vintage_policy": "Content-addressed snapshot; refresh requires a new dataset_version and hashes before release.",
+      "freshness_rule": "Refresh after each completed expected session; fail closed when the declared threshold is exceeded.",
+      "missing_rule": "Required-input failure propagates null with reason; no silent fill.",
+      "splice_policy": "No silent source splice within a published dataset version.",
+      "dataset_version": "snapshot-2026-08-25",
+      "source_tier": "canonical_production",
+      "snapshot_paths": [
+        "research/data/raw/BAMLH0A0HYM2.csv"
+      ],
+      "snapshot_sha256": {
+        "research/data/raw/BAMLH0A0HYM2.csv": "d92ee2ff780752cf172364bc5b3ae613f328bfc71fad3a8f8e0eeaa337fde354"
+      },
+      "refresh_policy": "Run the versioned updater after each completed session; recompute hashes and bump dataset_version before adoption.",
+      "notes": "FRED CSV snapshot; current endpoint coverage starts 2023-08-25.",
+      "calendar": "FRED_BUSINESS_DAY",
+      "observation_timestamp_policy": "CSV observation_date identifies the economic observation date; no intraday observation time is asserted.",
+      "publication_timestamp_policy": "The CSV snapshot lacks per-row publication timestamps; retrieval timestamp is recorded by provenance, and same-day availability is not assumed.",
+      "availability_lag": "Conservative T+1 business-day rule: an observation is usable no earlier than 00:00 America/Chicago on the next FRED business day.",
+      "point_in_time_join_rule": "Join to the first XNYS session whose open occurs after the conservative availability timestamp; never join on observation_date itself.",
+      "price_field_policy": "Not a price series: canonical calculations MUST read the BAMLH0A0HYM2 percent-spread column keyed by observation_date.",
+      "corporate_action_policy": "Corporate actions are not applicable. FRED/ICE BofA revisions change the snapshot hash and require a new dataset_version before adoption."
+    },
+    {
+      "source_contract_id": "QQQ_V5_1",
+      "status": "EMPIRICAL",
+      "provider": "Yahoo Finance via yfinance 0.2.66",
+      "dataset": "Yahoo Finance historical OHLCV snapshot",
+      "symbol_or_collection": "QQQ",
+      "field": "adj_close",
+      "frequency": "daily expected session",
+      "timezone": "America/New_York",
+      "adjustment_policy": "Adjusted/total-return proxy; auto_adjust=false.",
+      "vintage_policy": "Content-addressed snapshot; refresh requires a new dataset_version and hashes before release.",
+      "freshness_rule": "Refresh after each completed expected session; fail closed when the declared threshold is exceeded.",
+      "missing_rule": "Required-input failure propagates null with reason; no silent fill.",
+      "splice_policy": "No silent source splice within a published dataset version.",
+      "dataset_version": "snapshot-2026-08-25",
+      "source_tier": "canonical_production",
+      "snapshot_paths": [
+        "research/data/raw/QQQ.csv"
+      ],
+      "snapshot_sha256": {
+        "research/data/raw/QQQ.csv": "2be4936d59f0f81ba65ac60fc5aa65ce09b16cb6d0fa23e36ea8ff389b0fb89b"
+      },
+      "refresh_policy": "Run the versioned updater after each completed session; recompute hashes and bump dataset_version before adoption.",
+      "notes": "Growth-rotation numerator.",
+      "calendar": "XNYS",
+      "observation_timestamp_policy": "Date-only OHLCV row represents the completed XNYS regular session close at 16:00 America/New_York.",
+      "publication_timestamp_policy": "Snapshot retrieval timestamp is provenance; the bar is not treated as published until the provider returns a completed daily row.",
+      "availability_lag": "Usable for measurement decisions no earlier than the next XNYS session open after the observation session.",
+      "point_in_time_join_rule": "Join only to the next XNYS expected session; never use a same-session close to make a decision timestamped before that close.",
+      "price_field_policy": "Canonical calculations MUST read the provider-supplied adj_close CSV column. Raw open/high/low/close/volume are diagnostics only and MUST NOT substitute for adj_close.",
+      "corporate_action_policy": "Provider adj_close supplies split and cash-distribution adjustments. Any historical restatement, symbol substitution, mapping change, or changed duplicate-session resolution changes the snapshot hash and requires a new dataset_version; no silent splice or substitution. Adopted snapshots MUST contain one row per XNYS session."
+    },
+    {
+      "source_contract_id": "IWM_V5_1",
+      "status": "EMPIRICAL",
+      "provider": "Yahoo Finance via yfinance 0.2.66",
+      "dataset": "Yahoo Finance historical OHLCV snapshot",
+      "symbol_or_collection": "IWM",
+      "field": "adj_close",
+      "frequency": "daily expected session",
+      "timezone": "America/New_York",
+      "adjustment_policy": "Adjusted/total-return proxy; auto_adjust=false.",
+      "vintage_policy": "Content-addressed snapshot; refresh requires a new dataset_version and hashes before release.",
+      "freshness_rule": "Refresh after each completed expected session; fail closed when the declared threshold is exceeded.",
+      "missing_rule": "Required-input failure propagates null with reason; no silent fill.",
+      "splice_policy": "No silent source splice within a published dataset version.",
+      "dataset_version": "snapshot-2026-08-25",
+      "source_tier": "canonical_production",
+      "snapshot_paths": [
+        "research/data/raw/IWM.csv"
+      ],
+      "snapshot_sha256": {
+        "research/data/raw/IWM.csv": "4d2e24e3fd2e0de9f5154c84ae60a87f0580aaef34025211c29c2bc8973753df"
+      },
+      "refresh_policy": "Run the versioned updater after each completed session; recompute hashes and bump dataset_version before adoption.",
+      "notes": "Small-cap-rotation numerator.",
+      "calendar": "XNYS",
+      "observation_timestamp_policy": "Date-only OHLCV row represents the completed XNYS regular session close at 16:00 America/New_York.",
+      "publication_timestamp_policy": "Snapshot retrieval timestamp is provenance; the bar is not treated as published until the provider returns a completed daily row.",
+      "availability_lag": "Usable for measurement decisions no earlier than the next XNYS session open after the observation session.",
+      "point_in_time_join_rule": "Join only to the next XNYS expected session; never use a same-session close to make a decision timestamped before that close.",
+      "price_field_policy": "Canonical calculations MUST read the provider-supplied adj_close CSV column. Raw open/high/low/close/volume are diagnostics only and MUST NOT substitute for adj_close.",
+      "corporate_action_policy": "Provider adj_close supplies split and cash-distribution adjustments. Any historical restatement, symbol substitution, mapping change, or changed duplicate-session resolution changes the snapshot hash and requires a new dataset_version; no silent splice or substitution. Adopted snapshots MUST contain one row per XNYS session."
+    },
+    {
+      "source_contract_id": "VIX_V5_1",
+      "status": "EMPIRICAL",
+      "provider": "Yahoo Finance via yfinance 0.2.66; underlying index Cboe",
+      "dataset": "Yahoo Finance historical index snapshot",
+      "symbol_or_collection": "^VIX",
+      "field": "close",
+      "frequency": "daily expected session",
+      "timezone": "America/New_York",
+      "adjustment_policy": "Unadjusted index close.",
+      "vintage_policy": "Content-addressed snapshot; refresh requires a new dataset_version and hashes before release.",
+      "freshness_rule": "Refresh after each completed expected session; fail closed when the declared threshold is exceeded.",
+      "missing_rule": "Required-input failure propagates null with reason; no silent fill.",
+      "splice_policy": "No silent source splice within a published dataset version.",
+      "dataset_version": "snapshot-2026-08-25",
+      "source_tier": "canonical_production",
+      "snapshot_paths": [
+        "research/technical-analysis/data/market/VIX.csv"
+      ],
+      "snapshot_sha256": {
+        "research/technical-analysis/data/market/VIX.csv": "14dc094cd11cbc8826f467495dc82aee7545165c5fbe9a22179e23d6ebd5d78b"
+      },
+      "refresh_policy": "Run the versioned updater after each completed session; recompute hashes and bump dataset_version before adoption.",
+      "notes": "Canonical implied-volatility input.",
+      "calendar": "CBOE_US_INDEX_XNYS_ALIGNED",
+      "observation_timestamp_policy": "Daily index value is assigned to the labeled US session and treated as final only after the provider publishes the completed close.",
+      "publication_timestamp_policy": "Snapshot retrieval timestamp is provenance; no earlier intraday publication is inferred from the date-only CSV.",
+      "availability_lag": "Usable for measurement decisions no earlier than the next XNYS session open after the labeled observation session.",
+      "point_in_time_join_rule": "Map each completed index observation to the next XNYS expected session; missing or stale observations fail closed.",
+      "price_field_policy": "Canonical index calculations MUST read the unadjusted close CSV column; adj_close is ignored even when equal. No ETF total-return interpretation applies.",
+      "corporate_action_policy": "Corporate actions are not applicable to the index series. Any index-methodology, symbol, provider-history, or duplicate-session change requires a new content-addressed dataset_version."
+    },
+    {
+      "source_contract_id": "VIX9D_V5_1",
+      "status": "EMPIRICAL",
+      "provider": "Yahoo Finance via yfinance 0.2.66; underlying index Cboe",
+      "dataset": "Yahoo Finance historical index snapshot",
+      "symbol_or_collection": "^VIX9D",
+      "field": "close",
+      "frequency": "daily expected session",
+      "timezone": "America/New_York",
+      "adjustment_policy": "Unadjusted index close.",
+      "vintage_policy": "Content-addressed snapshot; refresh requires a new dataset_version and hashes before release.",
+      "freshness_rule": "Refresh after each completed expected session; fail closed when the declared threshold is exceeded.",
+      "missing_rule": "Required-input failure propagates null with reason; no silent fill.",
+      "splice_policy": "No silent source splice within a published dataset version.",
+      "dataset_version": "snapshot-2026-08-25",
+      "source_tier": "canonical_production",
+      "snapshot_paths": [
+        "research/technical-analysis/data/market/VIX9D.csv"
+      ],
+      "snapshot_sha256": {
+        "research/technical-analysis/data/market/VIX9D.csv": "30d81f9cae2f9e38e59b9729a22e74a30393168d92f3f0ed939143b0e1cd8b54"
+      },
+      "refresh_policy": "Run the versioned updater after each completed session; recompute hashes and bump dataset_version before adoption.",
+      "notes": "Canonical near-term curve input.",
+      "calendar": "CBOE_US_INDEX_XNYS_ALIGNED",
+      "observation_timestamp_policy": "Daily index value is assigned to the labeled US session and treated as final only after the provider publishes the completed close.",
+      "publication_timestamp_policy": "Snapshot retrieval timestamp is provenance; no earlier intraday publication is inferred from the date-only CSV.",
+      "availability_lag": "Usable for measurement decisions no earlier than the next XNYS session open after the labeled observation session.",
+      "point_in_time_join_rule": "Map each completed index observation to the next XNYS expected session; missing or stale observations fail closed.",
+      "price_field_policy": "Canonical index calculations MUST read the unadjusted close CSV column; adj_close is ignored even when equal. No ETF total-return interpretation applies.",
+      "corporate_action_policy": "Corporate actions are not applicable to the index series. Any index-methodology, symbol, provider-history, or duplicate-session change requires a new content-addressed dataset_version."
+    },
+    {
+      "source_contract_id": "VIX3M_DIAGNOSTIC_V5_1",
+      "status": "DIAGNOSTIC",
+      "provider": "Yahoo Finance via yfinance 0.2.66; underlying index Cboe",
+      "dataset": "Yahoo Finance historical index snapshot",
+      "symbol_or_collection": "^VIX3M",
+      "field": "close",
+      "frequency": "daily expected session",
+      "timezone": "America/New_York",
+      "adjustment_policy": "Unadjusted index close.",
+      "vintage_policy": "Content-addressed snapshot; refresh requires a new dataset_version and hashes before release.",
+      "freshness_rule": "Refresh after each completed expected session; fail closed when the declared threshold is exceeded.",
+      "missing_rule": "Required-input failure propagates null with reason; no silent fill.",
+      "splice_policy": "No silent source splice within a published dataset version.",
+      "dataset_version": "snapshot-2026-08-25",
+      "source_tier": "diagnostic_only",
+      "snapshot_paths": [
+        "research/technical-analysis/data/market/VIX3M.csv"
+      ],
+      "snapshot_sha256": {
+        "research/technical-analysis/data/market/VIX3M.csv": "de8e0f6c297137ec00e6709f8e64a1367addec8ad631377fe285f96c7b5418e0"
+      },
+      "refresh_policy": "Run the versioned updater after each completed session; recompute hashes and bump dataset_version before adoption.",
+      "notes": "Never required by canonical production.",
+      "calendar": "CBOE_US_INDEX_XNYS_ALIGNED",
+      "observation_timestamp_policy": "Daily index value is assigned to the labeled US session and treated as final only after the provider publishes the completed close.",
+      "publication_timestamp_policy": "Snapshot retrieval timestamp is provenance; no earlier intraday publication is inferred from the date-only CSV.",
+      "availability_lag": "Usable for measurement decisions no earlier than the next XNYS session open after the labeled observation session.",
+      "point_in_time_join_rule": "Map each completed index observation to the next XNYS expected session; missing or stale observations fail closed.",
+      "price_field_policy": "Canonical index calculations MUST read the unadjusted close CSV column; adj_close is ignored even when equal. No ETF total-return interpretation applies.",
+      "corporate_action_policy": "Corporate actions are not applicable to the index series. Any index-methodology, symbol, provider-history, or duplicate-session change requires a new content-addressed dataset_version."
+    }
+  ],
+  "fields": [
+    {
+      "field_id": "schema_version",
+      "category": "identity",
+      "role": "core",
+      "data_type": "string",
+      "shape": "scalar",
+      "unit": "id_or_label",
+      "range": {
+        "description": "Label domain is defined by v5.1; empirical thresholds do not alter allowed labels."
+      },
+      "polarity": "non_directional",
+      "monotonicity_assertion": "No supportive monotonic ordering is asserted.",
+      "nullable": false,
+      "null_rule": "Never null in an emitted record.",
+      "status": "CLOSED",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "output_contract_validation",
+        "replay_parity"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 schema_version field."
+    },
+    {
+      "field_id": "feature_contract_version",
+      "category": "identity",
+      "role": "core",
+      "data_type": "string",
+      "shape": "scalar",
+      "unit": "id_or_label",
+      "range": {
+        "description": "Label domain is defined by v5.1; empirical thresholds do not alter allowed labels."
+      },
+      "polarity": "non_directional",
+      "monotonicity_assertion": "No supportive monotonic ordering is asserted.",
+      "nullable": false,
+      "null_rule": "Never null in an emitted record.",
+      "status": "CLOSED",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "output_contract_validation",
+        "replay_parity"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 feature_contract_version field."
+    },
+    {
+      "field_id": "as_of",
+      "category": "identity",
+      "role": "core",
+      "data_type": "timestamp",
+      "shape": "scalar",
+      "unit": "timestamp",
+      "range": {
+        "description": "Domain is enforced by the declared JSON data type."
+      },
+      "polarity": "non_directional",
+      "monotonicity_assertion": "No supportive monotonic ordering is asserted.",
+      "nullable": false,
+      "null_rule": "Never null in an emitted record.",
+      "status": "CLOSED",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "expected_session_alignment",
+        "freshness_validation",
+        "replay_parity"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 as_of field."
+    },
+    {
+      "field_id": "engine_status",
+      "category": "data_quality",
+      "role": "explainability",
+      "data_type": "string",
+      "shape": "scalar",
+      "unit": "id_or_label",
+      "range": {
+        "description": "Label domain is defined by v5.1; empirical thresholds do not alter allowed labels."
+      },
+      "polarity": "non_directional",
+      "monotonicity_assertion": "No supportive monotonic ordering is asserted.",
+      "nullable": false,
+      "null_rule": "Never null in an emitted record.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "state_is_current",
+        "unavailable_reason_codes",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 engine_status field."
+    },
+    {
+      "field_id": "state_is_current",
+      "category": "data_quality",
+      "role": "core",
+      "data_type": "boolean",
+      "shape": "scalar",
+      "unit": "boolean",
+      "range": {
+        "description": "Domain is enforced by the declared JSON data type."
+      },
+      "polarity": "non_directional",
+      "monotonicity_assertion": "No supportive monotonic ordering is asserted.",
+      "nullable": false,
+      "null_rule": "Never null in an emitted record.",
+      "status": "CLOSED",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "measurement_output_contract",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 state_is_current field."
+    },
+    {
+      "field_id": "unavailable_reason_codes",
+      "category": "data_quality",
+      "role": "explainability",
+      "data_type": "array",
+      "shape": "collection",
+      "unit": "collection",
+      "range": {
+        "description": "Container shape and member semantics are defined by v5.1."
+      },
+      "polarity": "non_directional",
+      "monotonicity_assertion": "No supportive monotonic ordering is asserted.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "measurement_output_contract",
+        "data_completeness",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 unavailable_reason_codes field."
+    },
+    {
+      "field_id": "field_quality",
+      "category": "data_quality",
+      "role": "explainability",
+      "data_type": "object",
+      "shape": "map",
+      "unit": "structured_metadata",
+      "range": {
+        "description": "Container shape and member semantics are defined by v5.1."
+      },
+      "polarity": "non_directional",
+      "monotonicity_assertion": "No supportive monotonic ordering is asserted.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "availability_gate",
+        "data_completeness",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 field_quality field."
+    },
+    {
+      "field_id": "source_tier",
+      "category": "data_quality",
+      "role": "explainability",
+      "data_type": "string",
+      "shape": "scalar",
+      "unit": "id_or_label",
+      "range": {
+        "description": "Label domain is defined by v5.1; empirical thresholds do not alter allowed labels."
+      },
+      "polarity": "non_directional",
+      "monotonicity_assertion": "No supportive monotonic ordering is asserted.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "breadth_score",
+        "data_completeness",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 source_tier field."
+    },
+    {
+      "field_id": "coverage_ratio",
+      "category": "data_quality",
+      "role": "explainability",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "minimum": 0,
+        "maximum": 1
+      },
+      "polarity": "supportive_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, an improvement cannot reduce support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "availability_gate",
+        "breadth_score",
+        "data_completeness",
+        "crisis_domain_status"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 coverage_ratio field."
+    },
+    {
+      "field_id": "freshness_age_sessions",
+      "category": "data_quality",
+      "role": "explainability",
+      "data_type": "integer",
+      "shape": "scalar",
+      "unit": "count",
+      "range": {
+        "minimum": 0
+      },
+      "polarity": "adverse_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, a larger adverse value cannot improve support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "availability_gate",
+        "data_completeness",
+        "state_is_current"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 freshness_age_sessions field."
+    },
+    {
+      "field_id": "warmup_complete",
+      "category": "data_quality",
+      "role": "explainability",
+      "data_type": "boolean",
+      "shape": "scalar",
+      "unit": "boolean",
+      "range": {
+        "description": "Domain is enforced by the declared JSON data type."
+      },
+      "polarity": "supportive_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, an improvement cannot reduce support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "availability_gate",
+        "data_completeness",
+        "state_is_current"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 warmup_complete field."
+    },
+    {
+      "field_id": "benchmark_total_return_close",
+      "category": "raw_input",
+      "role": "raw",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "minimum": 0
+      },
+      "polarity": "non_directional",
+      "monotonicity_assertion": "No supportive monotonic ordering is asserted.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "BENCHMARK_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "direction_structure_raw",
+        "linearity_raw",
+        "path_efficiency_raw",
+        "growth_rotation_raw",
+        "small_cap_rotation_raw",
+        "realized_volatility",
+        "benchmark_drawdown",
+        "benchmark_return_shock"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 benchmark_total_return_close field."
+    },
+    {
+      "field_id": "breadth_member_observations",
+      "category": "raw_input",
+      "role": "raw",
+      "data_type": "array",
+      "shape": "collection",
+      "unit": "collection",
+      "range": {
+        "description": "Container shape and member semantics are defined by v5.1."
+      },
+      "polarity": "non_directional",
+      "monotonicity_assertion": "No supportive monotonic ordering is asserted.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "BREADTH_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "pct_above_sma50",
+        "pct_above_sma200",
+        "breadth_eligible_count",
+        "coverage_ratio",
+        "crisis_domain_status"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 breadth_member_observations field."
+    },
+    {
+      "field_id": "oas_level",
+      "category": "raw_input",
+      "role": "raw",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "minimum": 0
+      },
+      "polarity": "adverse_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, a larger adverse value cannot improve support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "OAS_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "oas_change",
+        "credit_level_pct",
+        "crisis_domain_status"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 oas_level field."
+    },
+    {
+      "field_id": "qqq_total_return_close",
+      "category": "raw_input",
+      "role": "raw",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "minimum": 0
+      },
+      "polarity": "non_directional",
+      "monotonicity_assertion": "No supportive monotonic ordering is asserted.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "QQQ_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "growth_rotation_raw"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 qqq_total_return_close field."
+    },
+    {
+      "field_id": "iwm_total_return_close",
+      "category": "raw_input",
+      "role": "raw",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "minimum": 0
+      },
+      "polarity": "non_directional",
+      "monotonicity_assertion": "No supportive monotonic ordering is asserted.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "IWM_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "small_cap_rotation_raw"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 iwm_total_return_close field."
+    },
+    {
+      "field_id": "vix_level",
+      "category": "raw_input",
+      "role": "raw",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "minimum": 0
+      },
+      "polarity": "adverse_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, a larger adverse value cannot improve support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "VIX_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "implied_vol_stability",
+        "vol_curve_raw",
+        "active_veto_ids",
+        "crisis_domain_status"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 vix_level field."
+    },
+    {
+      "field_id": "vix9d_level",
+      "category": "raw_input",
+      "role": "raw",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "minimum": 0
+      },
+      "polarity": "adverse_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, a larger adverse value cannot improve support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "VIX9D_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "vol_curve_raw",
+        "active_veto_ids",
+        "crisis_domain_status"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 vix9d_level field."
+    },
+    {
+      "field_id": "vix3m_level",
+      "category": "raw_input",
+      "role": "raw",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "minimum": 0
+      },
+      "polarity": "adverse_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, a larger adverse value cannot improve support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "DIAGNOSTIC",
+      "source_contract_ids": [
+        "VIX3M_DIAGNOSTIC_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "stability_challenger_diagnostics"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 vix3m_level field."
+    },
+    {
+      "field_id": "direction_structure_raw",
+      "category": "direction",
+      "role": "core",
+      "data_type": "string",
+      "shape": "scalar",
+      "unit": "id_or_label",
+      "range": {
+        "description": "Label domain is defined by v5.1; empirical thresholds do not alter allowed labels."
+      },
+      "polarity": "signed_directional",
+      "monotonicity_assertion": "Sign and ordering preserve declared directional semantics.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "CLOSED",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "direction_structure",
+        "direction_pending_state",
+        "direction_pending_count",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 direction_structure_raw field."
+    },
+    {
+      "field_id": "direction_structure",
+      "category": "direction",
+      "role": "core",
+      "data_type": "string",
+      "shape": "scalar",
+      "unit": "id_or_label",
+      "range": {
+        "description": "Label domain is defined by v5.1; empirical thresholds do not alter allowed labels."
+      },
+      "polarity": "signed_directional",
+      "monotonicity_assertion": "Sign and ordering preserve declared directional semantics.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "CLOSED",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "direction_sign",
+        "direction_score",
+        "state",
+        "trending_active",
+        "trending_entry_count",
+        "trending_exit_count",
+        "decision_margin",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 direction_structure field."
+    },
+    {
+      "field_id": "direction_sign",
+      "category": "direction",
+      "role": "core",
+      "data_type": "integer",
+      "shape": "scalar",
+      "unit": "sign",
+      "range": {
+        "enum": [
+          -1,
+          0,
+          1
+        ]
+      },
+      "polarity": "signed_directional",
+      "monotonicity_assertion": "Sign and ordering preserve declared directional semantics.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "CLOSED",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "measurement_output_contract",
+        "state",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 direction_sign field."
+    },
+    {
+      "field_id": "direction_pending_state",
+      "category": "direction",
+      "role": "state",
+      "data_type": "string",
+      "shape": "scalar",
+      "unit": "id_or_label",
+      "range": {
+        "description": "Label domain is defined by v5.1; empirical thresholds do not alter allowed labels."
+      },
+      "polarity": "signed_directional",
+      "monotonicity_assertion": "Sign and ordering preserve declared directional semantics.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "CLOSED",
+      "source_contract_ids": [
+        "ENGINE_STATE_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "direction_structure",
+        "replay_parity",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 direction_pending_state field."
+    },
+    {
+      "field_id": "direction_pending_count",
+      "category": "direction",
+      "role": "state",
+      "data_type": "integer",
+      "shape": "scalar",
+      "unit": "count",
+      "range": {
+        "minimum": 0
+      },
+      "polarity": "non_directional",
+      "monotonicity_assertion": "No supportive monotonic ordering is asserted.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "CLOSED",
+      "source_contract_ids": [
+        "ENGINE_STATE_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "direction_structure",
+        "replay_parity",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 direction_pending_count field."
+    },
+    {
+      "field_id": "linearity_raw",
+      "category": "direction",
+      "role": "explainability",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "minimum": 0,
+        "maximum": 1
+      },
+      "polarity": "supportive_positive",
+      "monotonicity_assertion": "Holding path length and all other valid inputs fixed, a higher rolling regression R-squared cannot reduce TrendQuality support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "linearity_pct",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 linearity_raw field."
+    },
+    {
+      "field_id": "linearity_pct",
+      "category": "direction",
+      "role": "core",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "percentile",
+      "range": {
+        "minimum": 0,
+        "maximum": 1
+      },
+      "polarity": "supportive_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, an improvement cannot reduce support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "trend_quality",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 linearity_pct field."
+    },
+    {
+      "field_id": "path_efficiency_raw",
+      "category": "direction",
+      "role": "explainability",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "minimum": 0,
+        "maximum": 1
+      },
+      "polarity": "supportive_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, an improvement cannot reduce support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "path_efficiency_pct",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 path_efficiency_raw field."
+    },
+    {
+      "field_id": "path_efficiency_pct",
+      "category": "direction",
+      "role": "core",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "percentile",
+      "range": {
+        "minimum": 0,
+        "maximum": 1
+      },
+      "polarity": "supportive_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, an improvement cannot reduce support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "trend_quality",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 path_efficiency_pct field."
+    },
+    {
+      "field_id": "trend_quality",
+      "category": "direction",
+      "role": "core",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "minimum": 0,
+        "maximum": 1
+      },
+      "polarity": "supportive_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, an improvement cannot reduce support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "direction_score",
+        "trending_active",
+        "trending_entry_count",
+        "trending_exit_count",
+        "decision_margin",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 trend_quality field."
+    },
+    {
+      "field_id": "direction_contribution",
+      "category": "direction",
+      "role": "explainability",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "minimum": 0,
+        "maximum": 1
+      },
+      "polarity": "supportive_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, an improvement cannot reduce support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "condition_pre_cap",
+        "pre_cap_and_pillar_impulses",
+        "pillar_agreement",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 direction_contribution field."
+    },
+    {
+      "field_id": "direction_score",
+      "category": "direction",
+      "role": "core",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "minimum": 0,
+        "maximum": 1
+      },
+      "polarity": "supportive_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, an improvement cannot reduce support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "direction_contribution",
+        "pillar_agreement",
+        "pre_cap_and_pillar_impulses",
+        "trending_active",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 direction_score field."
+    },
+    {
+      "field_id": "pct_above_sma50",
+      "category": "breadth",
+      "role": "explainability",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "percentile",
+      "range": {
+        "minimum": 0,
+        "maximum": 1
+      },
+      "polarity": "supportive_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, an improvement cannot reduce support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "breadth_score",
+        "crisis_domain_status",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 pct_above_sma50 field."
+    },
+    {
+      "field_id": "pct_above_sma200",
+      "category": "breadth",
+      "role": "explainability",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "percentile",
+      "range": {
+        "minimum": 0,
+        "maximum": 1
+      },
+      "polarity": "supportive_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, an improvement cannot reduce support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "breadth_score",
+        "crisis_domain_status",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 pct_above_sma200 field."
+    },
+    {
+      "field_id": "breadth_eligible_count",
+      "category": "breadth",
+      "role": "explainability",
+      "data_type": "integer",
+      "shape": "scalar",
+      "unit": "count",
+      "range": {
+        "minimum": 0
+      },
+      "polarity": "non_directional",
+      "monotonicity_assertion": "No supportive monotonic ordering is asserted.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "breadth_score",
+        "coverage_ratio",
+        "data_completeness",
+        "crisis_valid_domain_count",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 breadth_eligible_count field."
+    },
+    {
+      "field_id": "breadth_contribution",
+      "category": "breadth",
+      "role": "explainability",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "minimum": 0,
+        "maximum": 1
+      },
+      "polarity": "supportive_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, an improvement cannot reduce support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "condition_pre_cap",
+        "pre_cap_and_pillar_impulses",
+        "pillar_agreement",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 breadth_contribution field."
+    },
+    {
+      "field_id": "breadth_score",
+      "category": "breadth",
+      "role": "core",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "minimum": 0,
+        "maximum": 1
+      },
+      "polarity": "supportive_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, an improvement cannot reduce support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "breadth_contribution",
+        "pillar_agreement",
+        "pre_cap_and_pillar_impulses",
+        "crisis_domain_status",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 breadth_score field."
+    },
+    {
+      "field_id": "oas_change",
+      "category": "risk_appetite",
+      "role": "explainability",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "unbounded": true,
+        "description": "Any finite JSON number; empirical transforms may add versioned bounds later."
+      },
+      "polarity": "adverse_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, a larger adverse value cannot improve support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "credit_change_score",
+        "crisis_domain_status",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 oas_change field."
+    },
+    {
+      "field_id": "credit_level_pct",
+      "category": "risk_appetite",
+      "role": "core",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "percentile",
+      "range": {
+        "minimum": 0,
+        "maximum": 1
+      },
+      "polarity": "supportive_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, a higher oriented credit-support percentile cannot reduce Risk Appetite support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "risk_appetite_contributions",
+        "crisis_domain_status",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 credit_level_pct field."
+    },
+    {
+      "field_id": "credit_change_score",
+      "category": "risk_appetite",
+      "role": "core",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "minimum": 0,
+        "maximum": 1
+      },
+      "polarity": "supportive_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, an improvement cannot reduce support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "risk_appetite_contributions",
+        "crisis_domain_status",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 credit_change_score field."
+    },
+    {
+      "field_id": "growth_rotation_raw",
+      "category": "risk_appetite",
+      "role": "explainability",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "unbounded": true,
+        "description": "Any finite JSON number; empirical transforms may add versioned bounds later."
+      },
+      "polarity": "supportive_positive",
+      "monotonicity_assertion": "Holding the common market move and all other valid inputs fixed, higher QQQ versus benchmark relative return cannot reduce growth-rotation support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "growth_rotation_pct",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 growth_rotation_raw field."
+    },
+    {
+      "field_id": "growth_rotation_pct",
+      "category": "risk_appetite",
+      "role": "core",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "percentile",
+      "range": {
+        "minimum": 0,
+        "maximum": 1
+      },
+      "polarity": "supportive_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, an improvement cannot reduce support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "risk_appetite_contributions",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 growth_rotation_pct field."
+    },
+    {
+      "field_id": "small_cap_rotation_raw",
+      "category": "risk_appetite",
+      "role": "explainability",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "unbounded": true,
+        "description": "Any finite JSON number; empirical transforms may add versioned bounds later."
+      },
+      "polarity": "supportive_positive",
+      "monotonicity_assertion": "Holding the common market move and all other valid inputs fixed, higher IWM versus benchmark relative return cannot reduce small-cap-rotation support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "small_cap_rotation_pct",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 small_cap_rotation_raw field."
+    },
+    {
+      "field_id": "small_cap_rotation_pct",
+      "category": "risk_appetite",
+      "role": "core",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "percentile",
+      "range": {
+        "minimum": 0,
+        "maximum": 1
+      },
+      "polarity": "supportive_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, an improvement cannot reduce support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "risk_appetite_contributions",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 small_cap_rotation_pct field."
+    },
+    {
+      "field_id": "risk_appetite_contributions",
+      "category": "risk_appetite",
+      "role": "explainability",
+      "data_type": "object",
+      "shape": "map",
+      "unit": "structured_metadata",
+      "range": {
+        "description": "Container shape and member semantics are defined by v5.1."
+      },
+      "polarity": "supportive_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, an improvement cannot reduce support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "risk_appetite_score",
+        "condition_pre_cap",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 risk_appetite_contributions field."
+    },
+    {
+      "field_id": "risk_appetite_score",
+      "category": "risk_appetite",
+      "role": "core",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "minimum": 0,
+        "maximum": 1
+      },
+      "polarity": "supportive_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, an improvement cannot reduce support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "pillar_agreement",
+        "pre_cap_and_pillar_impulses",
+        "active_veto_ids",
+        "trending_active",
+        "decision_margin",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 risk_appetite_score field."
+    },
+    {
+      "field_id": "implied_vol_stability",
+      "category": "stability",
+      "role": "core",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "minimum": 0,
+        "maximum": 1
+      },
+      "polarity": "supportive_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, an improvement cannot reduce support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "stability_contributions",
+        "active_veto_ids",
+        "crisis_domain_status",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 implied_vol_stability field."
+    },
+    {
+      "field_id": "vol_curve_raw",
+      "category": "stability",
+      "role": "explainability",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "unbounded": true,
+        "description": "Any finite JSON number; empirical transforms may add versioned bounds later."
+      },
+      "polarity": "adverse_positive",
+      "monotonicity_assertion": "Holding VIX and all other valid inputs fixed, a higher VIX9D-to-VIX ratio cannot improve Stability support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "vol_curve_stability",
+        "active_veto_ids",
+        "crisis_domain_status",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 vol_curve_raw field."
+    },
+    {
+      "field_id": "vol_curve_stability",
+      "category": "stability",
+      "role": "core",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "minimum": 0,
+        "maximum": 1
+      },
+      "polarity": "supportive_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, an improvement cannot reduce support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "stability_contributions",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 vol_curve_stability field."
+    },
+    {
+      "field_id": "realized_volatility",
+      "category": "stability",
+      "role": "explainability",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "minimum": 0
+      },
+      "polarity": "adverse_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, a larger adverse value cannot improve support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "realized_vol_stability",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 realized_volatility field."
+    },
+    {
+      "field_id": "realized_vol_stability",
+      "category": "stability",
+      "role": "core",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "minimum": 0,
+        "maximum": 1
+      },
+      "polarity": "supportive_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, an improvement cannot reduce support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "stability_contributions",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 realized_vol_stability field."
+    },
+    {
+      "field_id": "benchmark_drawdown",
+      "category": "stability",
+      "role": "explainability",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "minimum": 0,
+        "maximum": 1
+      },
+      "polarity": "adverse_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, a larger adverse value cannot improve support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "price_damage",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 benchmark_drawdown field."
+    },
+    {
+      "field_id": "benchmark_return_shock",
+      "category": "stability",
+      "role": "explainability",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "minimum": 0,
+        "maximum": 1
+      },
+      "polarity": "adverse_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, a larger adverse value cannot improve support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "price_damage",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 benchmark_return_shock field."
+    },
+    {
+      "field_id": "price_damage",
+      "category": "stability",
+      "role": "core",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "minimum": 0,
+        "maximum": 1
+      },
+      "polarity": "adverse_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, a larger adverse value cannot improve support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "price_stability",
+        "active_veto_ids",
+        "active_cap_ids",
+        "crisis_domain_status",
+        "trending_active",
+        "trending_entry_count",
+        "trending_exit_count",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 price_damage field."
+    },
+    {
+      "field_id": "price_stability",
+      "category": "stability",
+      "role": "core",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "minimum": 0,
+        "maximum": 1
+      },
+      "polarity": "supportive_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, an improvement cannot reduce support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "stability_contributions",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 price_stability field."
+    },
+    {
+      "field_id": "stability_contributions",
+      "category": "stability",
+      "role": "explainability",
+      "data_type": "object",
+      "shape": "map",
+      "unit": "structured_metadata",
+      "range": {
+        "description": "Container shape and member semantics are defined by v5.1."
+      },
+      "polarity": "supportive_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, an improvement cannot reduce support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "stability_score",
+        "condition_pre_cap",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 stability_contributions field."
+    },
+    {
+      "field_id": "stability_score",
+      "category": "stability",
+      "role": "core",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "minimum": 0,
+        "maximum": 1
+      },
+      "polarity": "supportive_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, an improvement cannot reduce support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "pillar_agreement",
+        "pre_cap_and_pillar_impulses",
+        "active_veto_ids",
+        "trending_active",
+        "decision_margin",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 stability_score field."
+    },
+    {
+      "field_id": "pillar_weights",
+      "category": "condition",
+      "role": "explainability",
+      "data_type": "object",
+      "shape": "map",
+      "unit": "structured_metadata",
+      "range": {
+        "description": "Container shape and member semantics are defined by v5.1."
+      },
+      "polarity": "non_directional",
+      "monotonicity_assertion": "No supportive monotonic ordering is asserted.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "direction_contribution",
+        "breadth_contribution",
+        "risk_appetite_contributions",
+        "stability_contributions",
+        "condition_pre_cap",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 pillar_weights field."
+    },
+    {
+      "field_id": "condition_pre_cap",
+      "category": "condition",
+      "role": "core",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "minimum": 0,
+        "maximum": 1
+      },
+      "polarity": "supportive_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, an improvement cannot reduce support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "condition_score",
+        "pre_cap_and_pillar_impulses",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 condition_pre_cap field."
+    },
+    {
+      "field_id": "condition_score",
+      "category": "condition",
+      "role": "core",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "minimum": 0,
+        "maximum": 1
+      },
+      "polarity": "supportive_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, an improvement cannot reduce support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "condition_pct",
+        "state",
+        "pending_state",
+        "pending_state_count",
+        "crisis_exit_count",
+        "impulse_fast",
+        "impulse_slow",
+        "impulse_score",
+        "decision_margin",
+        "temporal_stability",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 condition_score field."
+    },
+    {
+      "field_id": "condition_pct",
+      "category": "condition",
+      "role": "core",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "percent",
+      "range": {
+        "minimum": 0,
+        "maximum": 100
+      },
+      "polarity": "supportive_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, an improvement cannot reduce support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "measurement_output_contract",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 condition_pct field."
+    },
+    {
+      "field_id": "active_veto_ids",
+      "category": "veto_cap",
+      "role": "explainability",
+      "data_type": "array",
+      "shape": "collection",
+      "unit": "collection",
+      "range": {
+        "description": "Container shape and member semantics are defined by v5.1."
+      },
+      "polarity": "non_directional",
+      "monotonicity_assertion": "No supportive monotonic ordering is asserted.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "CLOSED",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "condition_score",
+        "state",
+        "crisis_watch",
+        "uncorroborated_veto",
+        "crisis_exit_count",
+        "binding_event_changes",
+        "veto_cap_details",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 active_veto_ids field."
+    },
+    {
+      "field_id": "active_cap_ids",
+      "category": "veto_cap",
+      "role": "explainability",
+      "data_type": "array",
+      "shape": "collection",
+      "unit": "collection",
+      "range": {
+        "description": "Container shape and member semantics are defined by v5.1."
+      },
+      "polarity": "non_directional",
+      "monotonicity_assertion": "No supportive monotonic ordering is asserted.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "condition_score",
+        "binding_cap_ids",
+        "binding_event_changes",
+        "veto_cap_details",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 active_cap_ids field."
+    },
+    {
+      "field_id": "binding_cap_ids",
+      "category": "veto_cap",
+      "role": "explainability",
+      "data_type": "array",
+      "shape": "collection",
+      "unit": "collection",
+      "range": {
+        "description": "Container shape and member semantics are defined by v5.1."
+      },
+      "polarity": "non_directional",
+      "monotonicity_assertion": "No supportive monotonic ordering is asserted.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "binding_event_changes",
+        "veto_cap_details",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 binding_cap_ids field."
+    },
+    {
+      "field_id": "veto_cap_details",
+      "category": "veto_cap",
+      "role": "explainability",
+      "data_type": "object",
+      "shape": "map",
+      "unit": "structured_metadata",
+      "range": {
+        "description": "Container shape and member semantics are defined by v5.1."
+      },
+      "polarity": "non_directional",
+      "monotonicity_assertion": "No supportive monotonic ordering is asserted.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "binding_event_changes",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 veto_cap_details field."
+    },
+    {
+      "field_id": "state",
+      "category": "state",
+      "role": "core",
+      "data_type": "string",
+      "shape": "scalar",
+      "unit": "id_or_label",
+      "range": {
+        "description": "Label domain is defined by v5.1; empirical thresholds do not alter allowed labels."
+      },
+      "polarity": "non_directional",
+      "monotonicity_assertion": "No supportive monotonic ordering is asserted.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "ENGINE_STATE_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "pending_state",
+        "pending_state_count",
+        "crisis_exit_count",
+        "trending_active",
+        "decision_margin",
+        "temporal_stability",
+        "measurement_output_contract",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 state field."
+    },
+    {
+      "field_id": "pending_state",
+      "category": "state",
+      "role": "state",
+      "data_type": "string",
+      "shape": "scalar",
+      "unit": "id_or_label",
+      "range": {
+        "description": "Label domain is defined by v5.1; empirical thresholds do not alter allowed labels."
+      },
+      "polarity": "non_directional",
+      "monotonicity_assertion": "No supportive monotonic ordering is asserted.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "ENGINE_STATE_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "state",
+        "pending_state_count",
+        "replay_parity",
+        "temporal_stability",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 pending_state field."
+    },
+    {
+      "field_id": "pending_state_count",
+      "category": "state",
+      "role": "state",
+      "data_type": "integer",
+      "shape": "scalar",
+      "unit": "count",
+      "range": {
+        "minimum": 0
+      },
+      "polarity": "non_directional",
+      "monotonicity_assertion": "No supportive monotonic ordering is asserted.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "ENGINE_STATE_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "state",
+        "replay_parity",
+        "temporal_stability",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 pending_state_count field."
+    },
+    {
+      "field_id": "reason_codes",
+      "category": "state",
+      "role": "explainability",
+      "data_type": "array",
+      "shape": "collection",
+      "unit": "collection",
+      "range": {
+        "description": "Container shape and member semantics are defined by v5.1."
+      },
+      "polarity": "non_directional",
+      "monotonicity_assertion": "No supportive monotonic ordering is asserted.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "CLOSED",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "measurement_output_contract",
+        "data_completeness",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 reason_codes field."
+    },
+    {
+      "field_id": "crisis_domain_status",
+      "category": "crisis",
+      "role": "state",
+      "data_type": "object",
+      "shape": "map",
+      "unit": "structured_metadata",
+      "range": {
+        "description": "Container shape and member semantics are defined by v5.1."
+      },
+      "polarity": "non_directional",
+      "monotonicity_assertion": "No supportive monotonic ordering is asserted.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "ENGINE_STATE_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "crisis_valid_domain_count",
+        "crisis_active_domain_count",
+        "crisis_watch",
+        "uncorroborated_veto",
+        "state",
+        "crisis_exit_count",
+        "decision_margin",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 crisis_domain_status field."
+    },
+    {
+      "field_id": "crisis_valid_domain_count",
+      "category": "crisis",
+      "role": "state",
+      "data_type": "integer",
+      "shape": "scalar",
+      "unit": "count",
+      "range": {
+        "minimum": 0
+      },
+      "polarity": "non_directional",
+      "monotonicity_assertion": "No supportive monotonic ordering is asserted.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "ENGINE_STATE_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "state",
+        "crisis_watch",
+        "uncorroborated_veto",
+        "crisis_exit_count",
+        "data_completeness",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 crisis_valid_domain_count field."
+    },
+    {
+      "field_id": "crisis_active_domain_count",
+      "category": "crisis",
+      "role": "state",
+      "data_type": "integer",
+      "shape": "scalar",
+      "unit": "count",
+      "range": {
+        "minimum": 0
+      },
+      "polarity": "adverse_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, a larger adverse value cannot improve support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "ENGINE_STATE_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "state",
+        "crisis_watch",
+        "uncorroborated_veto",
+        "crisis_exit_count",
+        "decision_margin",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 crisis_active_domain_count field."
+    },
+    {
+      "field_id": "crisis_watch",
+      "category": "crisis",
+      "role": "state",
+      "data_type": "boolean",
+      "shape": "scalar",
+      "unit": "boolean",
+      "range": {
+        "description": "Domain is enforced by the declared JSON data type."
+      },
+      "polarity": "adverse_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, a larger adverse value cannot improve support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "ENGINE_STATE_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "reason_codes",
+        "measurement_output_contract",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 crisis_watch field."
+    },
+    {
+      "field_id": "uncorroborated_veto",
+      "category": "crisis",
+      "role": "state",
+      "data_type": "boolean",
+      "shape": "scalar",
+      "unit": "boolean",
+      "range": {
+        "description": "Domain is enforced by the declared JSON data type."
+      },
+      "polarity": "adverse_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, a larger adverse value cannot improve support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "ENGINE_STATE_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "state",
+        "reason_codes",
+        "measurement_output_contract",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 uncorroborated_veto field."
+    },
+    {
+      "field_id": "crisis_exit_count",
+      "category": "crisis",
+      "role": "state",
+      "data_type": "integer",
+      "shape": "scalar",
+      "unit": "count",
+      "range": {
+        "minimum": 0
+      },
+      "polarity": "non_directional",
+      "monotonicity_assertion": "No supportive monotonic ordering is asserted.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "ENGINE_STATE_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "state",
+        "replay_parity",
+        "temporal_stability",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 crisis_exit_count field."
+    },
+    {
+      "field_id": "trending_active",
+      "category": "trending",
+      "role": "state",
+      "data_type": "boolean",
+      "shape": "scalar",
+      "unit": "boolean",
+      "range": {
+        "description": "Domain is enforced by the declared JSON data type."
+      },
+      "polarity": "non_directional",
+      "monotonicity_assertion": "No supportive monotonic ordering is asserted.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "ENGINE_STATE_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "state",
+        "trending_entry_count",
+        "trending_exit_count",
+        "replay_parity",
+        "decision_margin",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 trending_active field."
+    },
+    {
+      "field_id": "trending_entry_count",
+      "category": "trending",
+      "role": "state",
+      "data_type": "integer",
+      "shape": "scalar",
+      "unit": "count",
+      "range": {
+        "minimum": 0
+      },
+      "polarity": "non_directional",
+      "monotonicity_assertion": "No supportive monotonic ordering is asserted.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "ENGINE_STATE_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "trending_active",
+        "state",
+        "replay_parity",
+        "temporal_stability",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 trending_entry_count field."
+    },
+    {
+      "field_id": "trending_exit_count",
+      "category": "trending",
+      "role": "state",
+      "data_type": "integer",
+      "shape": "scalar",
+      "unit": "count",
+      "range": {
+        "minimum": 0
+      },
+      "polarity": "non_directional",
+      "monotonicity_assertion": "No supportive monotonic ordering is asserted.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "ENGINE_STATE_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "trending_active",
+        "state",
+        "replay_parity",
+        "temporal_stability",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 trending_exit_count field."
+    },
+    {
+      "field_id": "impulse_fast",
+      "category": "impulse",
+      "role": "core",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "minimum": -1,
+        "maximum": 1
+      },
+      "polarity": "signed_directional",
+      "monotonicity_assertion": "Sign and ordering preserve declared directional semantics.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "impulse_score",
+        "measurement_output_contract",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 impulse_fast field."
+    },
+    {
+      "field_id": "impulse_slow",
+      "category": "impulse",
+      "role": "core",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "minimum": -1,
+        "maximum": 1
+      },
+      "polarity": "signed_directional",
+      "monotonicity_assertion": "Sign and ordering preserve declared directional semantics.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "impulse_score",
+        "measurement_output_contract",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 impulse_slow field."
+    },
+    {
+      "field_id": "impulse_score",
+      "category": "impulse",
+      "role": "core",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "minimum": -1,
+        "maximum": 1
+      },
+      "polarity": "signed_directional",
+      "monotonicity_assertion": "Sign and ordering preserve declared directional semantics.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "measurement_output_contract",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 impulse_score field."
+    },
+    {
+      "field_id": "pre_cap_and_pillar_impulses",
+      "category": "impulse",
+      "role": "explainability",
+      "data_type": "object",
+      "shape": "map",
+      "unit": "structured_metadata",
+      "range": {
+        "description": "Container shape and member semantics are defined by v5.1."
+      },
+      "polarity": "signed_directional",
+      "monotonicity_assertion": "Sign and ordering preserve declared directional semantics.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "impulse_attribution",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 pre_cap_and_pillar_impulses field."
+    },
+    {
+      "field_id": "binding_event_changes",
+      "category": "impulse",
+      "role": "explainability",
+      "data_type": "array",
+      "shape": "collection",
+      "unit": "collection",
+      "range": {
+        "description": "Container shape and member semantics are defined by v5.1."
+      },
+      "polarity": "non_directional",
+      "monotonicity_assertion": "No supportive monotonic ordering is asserted.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "CLOSED",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "impulse_attribution",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 binding_event_changes field."
+    },
+    {
+      "field_id": "pillar_agreement",
+      "category": "confidence",
+      "role": "core",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "minimum": 0,
+        "maximum": 1
+      },
+      "polarity": "supportive_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, an improvement cannot reduce support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "measurement_output_contract",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 pillar_agreement field."
+    },
+    {
+      "field_id": "data_completeness",
+      "category": "confidence",
+      "role": "core",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "minimum": 0,
+        "maximum": 1
+      },
+      "polarity": "supportive_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, an improvement cannot reduce support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "measurement_output_contract",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 data_completeness field."
+    },
+    {
+      "field_id": "decision_margin",
+      "category": "confidence",
+      "role": "core",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "minimum": 0,
+        "maximum": 1
+      },
+      "polarity": "supportive_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, an improvement cannot reduce support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "measurement_output_contract",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 decision_margin field."
+    },
+    {
+      "field_id": "temporal_stability",
+      "category": "confidence",
+      "role": "core",
+      "data_type": "number",
+      "shape": "scalar",
+      "unit": "score_or_source_units",
+      "range": {
+        "minimum": 0,
+        "maximum": 1
+      },
+      "polarity": "supportive_positive",
+      "monotonicity_assertion": "Holding other valid inputs fixed, an improvement cannot reduce support.",
+      "nullable": true,
+      "null_rule": "Null until valid, fresh, sufficiently warmed inputs exist; include reason code.",
+      "status": "EMPIRICAL",
+      "source_contract_ids": [
+        "DERIVED_V5_1"
+      ],
+      "lookback": "As specified by v5.1; EMPIRICAL horizons must be pinned before release.",
+      "freshness_rule": "Inherits strictest required-input freshness; raw inputs follow source contracts.",
+      "consumers": [
+        "measurement_output_contract",
+        "validation_and_explainability"
+      ],
+      "design_refs": [
+        "Market_Regime_Design_v5.1.md",
+        "Market_Regime_Design_v5.1.md §13"
+      ],
+      "description": "Canonical v5.1 temporal_stability field."
+    }
+  ]
+}
