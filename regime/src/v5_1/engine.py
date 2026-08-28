@@ -498,6 +498,29 @@ REASONABLENESS_CHECK_CONFIG_ALL_REAL = replace(
 )
 
 
+# REASONABLENESS_CHECK_CONFIG_MID_ALL — a SIXTH scaffolding instance, per
+# continued empirical study. Every prior combined config
+# (REASONABLENESS_CHECK_CONFIG_ALL_REAL) paired Direction's longest
+# window (21/65/200) with Breadth's longest window (50/200) — the two
+# "most real" endpoints. This config instead pairs Direction's longest
+# window with Breadth's MID window (20/50, REASONABLENESS_CHECK_CONFIG_
+# BREADTH_MID) — a combination never previously built or tested,
+# isolating whether Message[198]'s "combining both real-window fixes
+# compounds their responsiveness cost" finding is specific to the
+# 50/200 Breadth window, or holds just as strongly with a shorter,
+# faster Breadth window paired against the same long Direction window.
+# NOT a production default, NOT a cited benchmark (inherits the same
+# caveat as REASONABLENESS_CHECK_CONFIG_BREADTH_MID: 20/50 is an
+# invented probe point, not a design citation) — same
+# `dataclasses.replace()` discipline as every other config here.
+REASONABLENESS_CHECK_CONFIG_MID_ALL = replace(
+    TEST_SCAFFOLDING_CONFIG,
+    direction_horizons=DirectionHorizons(ema_fast=21, sma_mid=65, sma_long=200),
+    breadth_sma50_window=20,
+    breadth_sma200_window=50,
+)
+
+
 @dataclass(frozen=True)
 class RawSeriesBundle:
     """Every raw series the orchestrator needs for one run, loaded once
