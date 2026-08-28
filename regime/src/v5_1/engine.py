@@ -21,8 +21,24 @@ synthetic fixtures, but do not apply it to the frozen development
 injections"). No calibration, backtest, or production run of any kind may
 use this config — every real EMPIRICAL decision (pillar weights, veto
 thresholds, TrendQuality floors, Impulse transform, Confidence formulas,
-credit transform, stability transforms, direction adjustment, etc.)
-remains genuinely open, exactly as it was at the end of Slice 9.
+direction adjustment, etc.) remains genuinely open, exactly as it was at
+the end of Slice 9.
+
+**Update (2026-08-27, Message[189]/[190] — measurement-only backtesting
+phase)**: the credit transform and Stability's four domain transforms/
+estimators are NO LONGER fixed-constant fakes — they were replaced with
+real (if intentionally simple, uncalibrated) standard-finance formulas:
+`_causal_midrank_credit_transform` (reuses the engine's own
+`causal_midrank()` on real OAS data), `_realized_vol_estimator` (textbook
+trailing-20-session annualized historical volatility),
+`_drawdown_price_damage_estimator` (textbook drawdown-from-peak), and
+four scale-appropriate `MonotoneDecreasingTransform` implementations (see
+each function's own docstring below). These are genuinely computed from
+real data now, not placeholders — but the specific caps/floors chosen
+inside them (`_IMPLIED_VOL_CAP`, `_REALIZED_VOL_CAP`,
+`_VOL_CURVE_FLOOR`/`_CEILING`) are still real-but-simple reference values,
+not calibrated production thresholds, and `TEST_SCAFFOLDING_CONFIG`'s own
+PILLAR WEIGHTS remain uncalibrated equal-weight placeholders regardless.
 
 **KNOWN LIMITATIONS, found during an independent senior-dev review
 (2026-08-27) and flagged here at the top rather than only in comments
@@ -79,6 +95,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .contracts import Manifest, load_manifest
+from .normalization import causal_midrank, InsufficientHistoryError, REQUIRED_WINDOW_SIZE
 from .raw_features import RawSeries, RawSeriesCollection, load_raw_series, load_raw_collection
 from .direction import (
     DirectionStructure, DirectionInputs, DirectionHorizons, DirectionBaseScores,
@@ -110,36 +127,160 @@ def _stub_direction_adjustment(base_score: float, trend_quality: float | None) -
     return base_score
 
 
-def _stub_credit_transform(oas_series: RawSeries, as_of: str) -> tuple[float, float] | None:
-    v = oas_series.value_on(as_of)
-    if v is None:
+def _causal_midrank_credit_transform(oas_series: RawSeries, as_of: str) -> tuple[float, float] | None:
+    """Real (if simple) reference implementation, replacing the earlier
+    fixed-constant stub, per the human's explicit direction (Message[189]):
+    reuse the engine's own `causal_midrank()` primitive on the real OAS
+    series — the same pattern already used for growth/small-cap rotation
+    in `risk_appetite.py`, not a novel formula.
+
+    `credit_level_pct` is manifest-declared `supportive_positive`
+    (`{'polarity': 'supportive_positive', 'monotonicity_assertion': 'a
+    higher oriented credit-support percentile cannot reduce Risk Appetite
+    support'}`), while `oas_change`/OAS itself is `adverse_positive` (a
+    HIGHER spread is worse) — so this transform must INVERT OAS's raw
+    midrank: a LOW OAS level (tight, calm credit) sits at a low raw
+    percentile of the OAS window but must map to a HIGH credit_level_pct.
+    `credit_level_pct = 1.0 - causal_midrank(oas_window, oas_now) / 100.0`.
+
+    `credit_change_score` (also `supportive_positive`: 'an improvement
+    cannot reduce support') uses the exact same inversion applied to the
+    1-session OAS CHANGE series (not the level series) — a large positive
+    change (spread widening, adverse) sits at a high raw percentile of the
+    change-window and must map to a LOW credit_change_score; a spread
+    tightening (negative change) must map to a HIGH credit_change_score.
+
+    Returns None if OAS itself is unavailable on `as_of`, or if there is
+    insufficient history (fewer than REQUIRED_WINDOW_SIZE+1 valid sessions)
+    for either the level or change midrank window — fail-closed, per the
+    `CreditTransform` Protocol's own documented contract.
+    """
+    current_level = oas_series.value_on(as_of)
+    if current_level is None:
         return None
-    return (0.5, 0.0)
+
+    level_window_obs = oas_series.window_ending(as_of, REQUIRED_WINDOW_SIZE)
+    if level_window_obs is None:
+        return None
+    level_window = [o.value for o in level_window_obs]
+    try:
+        credit_level_pct = 1.0 - causal_midrank(level_window, current_level) / 100.0
+    except InsufficientHistoryError:
+        return None
+
+    # 1-session change series: need REQUIRED_WINDOW_SIZE+1 raw observations
+    # to derive REQUIRED_WINDOW_SIZE consecutive-pair changes.
+    change_domain_obs = oas_series.window_ending(as_of, REQUIRED_WINDOW_SIZE + 1)
+    if change_domain_obs is None:
+        return None
+    change_window = [change_domain_obs[i].value - change_domain_obs[i - 1].value for i in range(1, len(change_domain_obs))]
+    current_change = change_window[-1]
+    try:
+        credit_change_score = 1.0 - causal_midrank(change_window, current_change) / 100.0
+    except InsufficientHistoryError:
+        return None
+
+    return (credit_level_pct, credit_change_score)
 
 
-def _stub_monotone_decreasing(raw_level: float) -> float:
-    return max(0.0, min(1.0, (100.0 - raw_level) / 100.0))
+# VIX caps below are historical-extreme references (2020 COVID peak ~82.7,
+# 2008 GFC peak ~80), not calibrated production thresholds — chosen only
+# so the transforms below produce a real, varying [0,1] output across the
+# genuine historical range rather than saturating at 0 or 1 for realistic
+# data. Recalibration (or replacement with an EMPIRICAL-injected cap) is
+# exactly the kind of follow-on work Message[188]'s checklist describes;
+# this is a real-but-simple reference value, not a claimed-optimal one.
+_IMPLIED_VOL_CAP = 80.0
+_REALIZED_VOL_CAP = 0.80  # annualized realized volatility cap
 
 
-def _stub_realized_vol_estimator(benchmark_series: RawSeries, as_of: str) -> float | None:
-    v = benchmark_series.value_on(as_of)
-    return None if v is None else 0.2
+def _implied_vol_stability_transform(raw_level: float) -> float:
+    """VIX level -> [0,1] supportive-positive. Monotone-decreasing by
+    construction (higher VIX -> lower or equal output); operates on the
+    LEVEL only, never a signed change (keeps the VIX-decline-never-lowers-
+    Stability invariant structurally satisfied, per stability.py's own
+    docstring)."""
+    return max(0.0, min(1.0, 1.0 - raw_level / _IMPLIED_VOL_CAP))
 
 
-def _stub_price_damage_estimator(benchmark_series: RawSeries, as_of: str) -> float | None:
-    """Note found during an independent senior-dev review (2026-08-27):
-    this stub is injected directly into `stability.py`'s
-    `PriceDamageEstimator` Protocol parameter, bypassing
-    `raw_features.py`'s own `compute_derived_raw()`/
-    `register_derived_raw_estimator()` registry (which is designed to
-    `raise NotImplementedError` for an unregistered derived-raw estimator
-    — a genuine fail-loud mechanism built in Slice 2). Both are legitimate
-    injection points per their own module's interface (Stability's own
-    Protocol parameter vs. Slice 2's registry), so this is not a bug, but
-    it does mean Slice 2's fail-loud registry is never actually exercised
-    by this orchestrator — flagged here rather than left implicit."""
-    v = benchmark_series.value_on(as_of)
-    return None if v is None else 0.1
+# VIX9D/VIX ratio real range observed in the pinned data is roughly
+# [0.66, 1.59] (see Message[189]'s implementation notes) — below 1.0 is
+# backwardation (near-term fear exceeds medium-term, a stress signal),
+# above 1.0 is contango (calm term structure). This floor/ceiling spans
+# comfortably past the observed extremes on both sides.
+_VOL_CURVE_FLOOR = 0.60
+_VOL_CURVE_CEILING = 1.60
+
+
+def _vol_curve_stability_transform(raw_level: float) -> float:
+    """VIX9D/VIX ratio -> [0,1] supportive-positive. A higher ratio
+    (contango, calm) maps to a higher output; a lower ratio (backwardation,
+    stress) maps to a lower output — monotone-increasing IN THE RATIO,
+    which is the correct "monotone-decreasing in stress" polarity the
+    Protocol requires (backwardation is the stressed direction here, not a
+    literal higher-raw-number-is-worse convention like VIX itself)."""
+    span = _VOL_CURVE_CEILING - _VOL_CURVE_FLOOR
+    return max(0.0, min(1.0, (raw_level - _VOL_CURVE_FLOOR) / span))
+
+
+def _realized_vol_stability_transform(raw_level: float) -> float:
+    """Annualized realized volatility -> [0,1] supportive-positive. Same
+    monotone-decreasing-in-stress shape as implied vol, with its own
+    scale-appropriate cap (realized vol is naturally on a ~0.03-0.9 scale
+    in the pinned data, NOT VIX's ~9-83 point scale — reusing the VIX cap
+    here was the real scale-mismatch bug this replacement fixes, per
+    Message[189]/[190]: the old single shared stub saturated near 1.0 for
+    every real realized-vol value, since real realized vol values like
+    0.13 are nowhere near a VIX-shaped 80-point cap)."""
+    return max(0.0, min(1.0, 1.0 - raw_level / _REALIZED_VOL_CAP))
+
+
+def _price_stability_transform(raw_price_damage: float) -> float:
+    """price_damage (adverse-positive, already on [0,1] per
+    _drawdown_price_damage_estimator below) -> price_stability
+    (supportive-positive [0,1]). The simplest correct polarity flip: more
+    damage -> less stability."""
+    return max(0.0, min(1.0, 1.0 - raw_price_damage))
+
+
+def _realized_vol_estimator(benchmark_series: RawSeries, as_of: str) -> float | None:
+    """Real (if simple) reference implementation, replacing the earlier
+    fixed-constant stub (Message[189]): standard trailing-20-session
+    annualized historical volatility of daily benchmark returns —
+    `stdev(daily_returns) * sqrt(252)`, a textbook realized-vol estimator,
+    not a novel one. Returns None (fail-closed) if fewer than 21
+    observations (20 return periods) exist ending at `as_of`."""
+    window = benchmark_series.window_ending(as_of, 21)
+    if window is None:
+        return None
+    closes = [o.value for o in window]
+    daily_returns = [closes[i] / closes[i - 1] - 1.0 for i in range(1, len(closes)) if closes[i - 1] != 0]
+    if len(daily_returns) < 20:
+        return None
+    mean = sum(daily_returns) / len(daily_returns)
+    variance = sum((r - mean) ** 2 for r in daily_returns) / len(daily_returns)
+    stdev = variance ** 0.5
+    return stdev * (252.0 ** 0.5)
+
+
+def _drawdown_price_damage_estimator(benchmark_series: RawSeries, as_of: str) -> float | None:
+    """Real (if simple) reference implementation, replacing the earlier
+    fixed-constant stub (Message[189]): drawdown-from-peak magnitude over
+    a trailing 252-session (~1 year) lookback — `(peak - current) / peak`,
+    clipped to [0,1]. Adverse-positive per PriceDamageEstimator's own
+    contract (higher = more damage). Standard, textbook drawdown, not a
+    novel construction. Returns None (fail-closed) if fewer than 252
+    observations exist ending at `as_of`."""
+    window = benchmark_series.window_ending(as_of, 252)
+    if window is None:
+        return None
+    closes = [o.value for o in window]
+    current = closes[-1]
+    peak = max(closes)
+    if peak <= 0:
+        return None
+    drawdown = (peak - current) / peak
+    return max(0.0, min(1.0, drawdown))
 
 
 def _stub_scale_estimator(raw_change: float) -> float:
@@ -349,7 +490,7 @@ def run_engine_for_date(
     risk_appetite_result: RiskAppetiteResult | None
     try:
         risk_appetite_result = compute_risk_appetite(
-            as_of, raw.oas, raw.qqq, raw.iwm, raw.benchmark, _stub_credit_transform, config.risk_appetite_weights,
+            as_of, raw.oas, raw.qqq, raw.iwm, raw.benchmark, _causal_midrank_credit_transform, config.risk_appetite_weights,
         )
     except RiskAppetiteUnavailableError:
         risk_appetite_result = None
@@ -359,8 +500,8 @@ def run_engine_for_date(
     try:
         stability_result = compute_stability(
             as_of, raw.vix, raw.vix9d, raw.benchmark,
-            _stub_monotone_decreasing, _stub_monotone_decreasing, _stub_monotone_decreasing,
-            _stub_realized_vol_estimator, _stub_price_damage_estimator, _stub_monotone_decreasing,
+            _implied_vol_stability_transform, _vol_curve_stability_transform, _realized_vol_stability_transform,
+            _realized_vol_estimator, _drawdown_price_damage_estimator, _price_stability_transform,
             config.stability_weights,
         )
     except StabilityUnavailableError:

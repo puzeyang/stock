@@ -24,11 +24,19 @@ sys.path.insert(0, str(REPO_ROOT / "regime/src"))
 
 from v5_1.contracts import load_manifest  # noqa: E402
 from v5_1.output_assembly import validate_output  # noqa: E402
+from v5_1.raw_features import load_raw_series  # noqa: E402
 from v5_1.engine import (  # noqa: E402
     load_raw_series_bundle,
     new_running_engine_state,
     run_engine_for_date,
     TEST_SCAFFOLDING_CONFIG,
+    _causal_midrank_credit_transform,
+    _implied_vol_stability_transform,
+    _vol_curve_stability_transform,
+    _realized_vol_stability_transform,
+    _price_stability_transform,
+    _realized_vol_estimator,
+    _drawdown_price_damage_estimator,
 )
 
 
@@ -145,3 +153,175 @@ class TestScaffoldingConfigIsExplicit:
         future caller to see exactly what it is (and isn't)."""
         assert TEST_SCAFFOLDING_CONFIG is not None
         assert "TEST_SCAFFOLDING" in "TEST_SCAFFOLDING_CONFIG"
+
+
+# ---------------------------------------------------------------------------
+# Real (if simple) reference formulas replacing the old fixed-constant
+# stubs — per Message[189]/[190] (measurement-only backtesting phase).
+# These are real, standard-finance formulas (causal-midrank credit
+# transform, historical realized vol, drawdown-based price damage,
+# scale-appropriate monotone Stability transforms), NOT calibrated
+# production defaults — the caps/floors chosen (_IMPLIED_VOL_CAP etc.) are
+# real-but-simple reference values, not claimed-optimal ones.
+# ---------------------------------------------------------------------------
+
+class TestCreditTransform:
+    def test_returns_none_before_504_session_oas_window_is_satisfiable(self, manifest):
+        """A real, structural finding from this phase: the pinned OAS
+        snapshot starts 2023-08-25, so the causal 504-session window isn't
+        satisfiable until 2025-07-29 — Risk Appetite (and therefore
+        Condition/state) is genuinely unavailable on every date before
+        that, not a bug, a real fail-closed consequence of insufficient
+        pinned history."""
+        oas = load_raw_series("oas_level", manifest)
+        assert _causal_midrank_credit_transform(oas, "2024-01-16") is None
+
+    def test_returns_real_values_once_504_session_window_is_satisfiable(self, manifest):
+        oas = load_raw_series("oas_level", manifest)
+        result = _causal_midrank_credit_transform(oas, "2025-08-01")
+        assert result is not None
+        credit_level_pct, credit_change_score = result
+        assert 0.0 <= credit_level_pct <= 1.0
+        assert 0.0 <= credit_change_score <= 1.0
+
+    def test_polarity_tightest_real_spread_gives_highest_credit_level_pct(self, manifest):
+        """credit_level_pct is manifest-declared supportive_positive: a
+        tighter (lower) OAS spread must map to a HIGHER credit_level_pct
+        — verified against the real tightest and widest OAS days within
+        the 504-window-satisfiable range, not a synthetic fixture."""
+        oas = load_raw_series("oas_level", manifest)
+        candidates = [o for o in oas.observations if o.date >= "2025-07-29"]
+        tightest = min(candidates, key=lambda o: o.value)
+        widest = max(candidates, key=lambda o: o.value)
+        r_tight = _causal_midrank_credit_transform(oas, tightest.date)
+        r_wide = _causal_midrank_credit_transform(oas, widest.date)
+        assert r_tight is not None and r_wide is not None
+        assert r_tight[0] > r_wide[0], (
+            f"tightest real spread ({tightest.value} on {tightest.date}) gave credit_level_pct="
+            f"{r_tight[0]}, widest ({widest.value} on {widest.date}) gave {r_wide[0]} — expected tightest > widest"
+        )
+
+    def test_none_when_oas_missing_on_as_of(self, manifest):
+        oas = load_raw_series("oas_level", manifest)
+        assert _causal_midrank_credit_transform(oas, "1900-01-01") is None
+
+
+class TestStabilityTransforms:
+    def test_implied_vol_transform_monotone_decreasing_across_real_vix_range(self):
+        levels = [10.0, 15.0, 20.0, 30.0, 45.0, 60.0, 82.7]  # real observed VIX range
+        outputs = [_implied_vol_stability_transform(v) for v in levels]
+        for i in range(len(outputs) - 1):
+            assert outputs[i] >= outputs[i + 1]
+        assert all(0.0 <= o <= 1.0 for o in outputs)
+
+    def test_vol_curve_transform_monotone_increasing_in_ratio_across_real_range(self):
+        """Real observed VIX9D/VIX ratio range from the pinned data is
+        roughly [0.66, 1.59] — a HIGHER ratio (contango) is calmer and
+        must map to a HIGHER output."""
+        ratios = [0.66, 0.8, 0.94, 1.1, 1.3, 1.59]
+        outputs = [_vol_curve_stability_transform(r) for r in ratios]
+        for i in range(len(outputs) - 1):
+            assert outputs[i] <= outputs[i + 1]
+        assert all(0.0 <= o <= 1.0 for o in outputs)
+
+    def test_realized_vol_transform_monotone_decreasing_and_not_saturated(self):
+        """Regression test for the real scale-mismatch bug found during
+        this phase: the OLD shared stub reused a VIX-shaped (~0-100)
+        formula for realized vol too, which is naturally on a ~0.03-0.9
+        scale — every real value saturated near 1.0, never actually
+        varying. This asserts the new realized-vol-specific cap produces
+        genuinely DIFFERENT outputs across the real observed range, not
+        just a monotone-decreasing shape (which the old bug also
+        technically satisfied)."""
+        rvols = [0.03, 0.1, 0.2, 0.4, 0.6, 0.93]  # real observed 20d-annualized range
+        outputs = [_realized_vol_stability_transform(v) for v in rvols]
+        for i in range(len(outputs) - 1):
+            assert outputs[i] >= outputs[i + 1]
+        assert all(0.0 <= o <= 1.0 for o in outputs)
+        assert len(set(outputs)) > 1, "realized_vol transform must not saturate to a single value across the real range"
+
+    def test_price_stability_transform_monotone_decreasing_in_damage(self):
+        damages = [0.0, 0.1, 0.3, 0.6, 1.0]
+        outputs = [_price_stability_transform(d) for d in damages]
+        for i in range(len(outputs) - 1):
+            assert outputs[i] >= outputs[i + 1]
+        assert all(0.0 <= o <= 1.0 for o in outputs)
+
+    def test_vix_decline_across_real_2020_sessions_never_lowers_implied_vol_stability(self, manifest):
+        """The engine's own CLOSED invariant (design §6.6), re-verified
+        specifically against the NEW real transform (not just the old
+        test-stub version already covered by test_slice6.py)."""
+        vix = load_raw_series("vix_level", manifest)
+        dates = [o.date for o in vix.observations if "2020-04" <= o.date[:7] <= "2020-06"]
+        found = False
+        for i in range(1, len(dates)):
+            prev_vix, cur_vix = vix.value_on(dates[i - 1]), vix.value_on(dates[i])
+            if prev_vix is not None and cur_vix is not None and cur_vix < prev_vix:
+                prev_stab = _implied_vol_stability_transform(prev_vix)
+                cur_stab = _implied_vol_stability_transform(cur_vix)
+                assert cur_stab >= prev_stab
+                found = True
+                break
+        assert found, "test setup error: no real VIX-decline day found in the searched window"
+
+
+class TestRealizedVolEstimator:
+    def test_returns_none_with_insufficient_history(self, manifest):
+        spy = load_raw_series("benchmark_total_return_close", manifest)
+        assert _realized_vol_estimator(spy, "1993-02-01") is None
+
+    def test_returns_positive_real_value_on_a_well_warmed_date(self, manifest):
+        spy = load_raw_series("benchmark_total_return_close", manifest)
+        v = _realized_vol_estimator(spy, "2024-01-16")
+        assert v is not None
+        assert v > 0.0
+
+    def test_covid_crash_shows_meaningfully_higher_realized_vol_than_a_calm_date(self, manifest):
+        """Real-world sanity check: 20-session realized vol at the COVID
+        crash bottom must be dramatically higher than on a calm, unrelated
+        date — not merely nonzero."""
+        spy = load_raw_series("benchmark_total_return_close", manifest)
+        crash_vol = _realized_vol_estimator(spy, "2020-03-23")
+        calm_vol = _realized_vol_estimator(spy, "2024-01-16")
+        assert crash_vol is not None and calm_vol is not None
+        assert crash_vol > calm_vol * 2, f"expected crash vol ({crash_vol}) to be well above calm vol ({calm_vol})"
+
+
+class TestDrawdownPriceDamageEstimator:
+    def test_returns_none_with_insufficient_history(self, manifest):
+        spy = load_raw_series("benchmark_total_return_close", manifest)
+        assert _drawdown_price_damage_estimator(spy, "1993-02-01") is None
+
+    def test_covid_crash_bottom_shows_meaningfully_higher_damage_than_a_calm_date(self, manifest):
+        spy = load_raw_series("benchmark_total_return_close", manifest)
+        crash_damage = _drawdown_price_damage_estimator(spy, "2020-03-23")
+        calm_damage = _drawdown_price_damage_estimator(spy, "2024-01-16")
+        assert crash_damage is not None and calm_damage is not None
+        assert crash_damage > calm_damage * 10, f"expected crash damage ({crash_damage}) to be well above calm damage ({calm_damage})"
+
+    def test_output_is_bounded_to_zero_one(self, manifest):
+        spy = load_raw_series("benchmark_total_return_close", manifest)
+        for d in ["2020-03-23", "2024-01-16", "2021-11-15"]:
+            v = _drawdown_price_damage_estimator(spy, d)
+            assert v is not None
+            assert 0.0 <= v <= 1.0
+
+
+class TestFullEngineWithRealFormulas:
+    def test_engine_produces_a_non_none_condition_score_once_oas_window_is_satisfiable(self, manifest, raw_bundle):
+        """End-to-end confirmation that the new real formulas actually let
+        Condition become available (not just each formula in isolation) —
+        run against a real post-2025-07-29 date."""
+        state = new_running_engine_state()
+        record = run_engine_for_date("2025-08-01", raw_bundle, state, manifest)
+        assert record["condition_score"] is not None
+        assert record["risk_appetite_score"] is not None
+        assert record["stability_score"] is not None
+        errors = validate_output(manifest, record)
+        assert errors == []
+
+    def test_engine_condition_score_still_none_before_oas_window_is_satisfiable(self, manifest, raw_bundle):
+        state = new_running_engine_state()
+        record = run_engine_for_date("2024-01-16", raw_bundle, state, manifest)
+        assert record["condition_score"] is None
+        assert record["risk_appetite_score"] is None
