@@ -37,6 +37,7 @@ from v5_1.engine import (  # noqa: E402
     _price_stability_transform,
     _realized_vol_estimator,
     _drawdown_price_damage_estimator,
+    _impulse_horizon,
 )
 
 
@@ -145,6 +146,117 @@ class TestPersistedStateAdvances:
         records1 = [run_engine_for_date(d, raw_bundle, state1, manifest) for d in dates]
         records2 = [run_engine_for_date(d, raw_bundle, state2, manifest) for d in dates]
         assert records1 == records2
+
+
+# ---------------------------------------------------------------------------
+# Impulse's REAL condition_score history (Message[207]) — replaces the
+# previously-structurally-degenerate `_impulse_horizon()` (see the module
+# docstring's former "KNOWN LIMITATIONS" item 2). Before this fix,
+# impulse_score was mechanically ~0 on every real run, regardless of
+# horizon length, because the t-h endpoint was substituted with the
+# current condition_score. These tests verify the fix is real, not just
+# non-crashing — Message[189]'s formula fixes and Message[207]'s history
+# fix share the same standard: an absent test here would leave a
+# structural fix as unverified as the degeneracy it replaced.
+# ---------------------------------------------------------------------------
+
+class TestImpulseRealHistory:
+    _DATES = ["2024-01-02", "2024-01-03", "2024-01-04", "2024-01-05", "2024-01-08",
+              "2024-01-09", "2024-01-10", "2024-01-11", "2024-01-12", "2024-01-16",
+              "2024-01-17", "2024-01-18", "2024-01-19", "2024-01-22", "2024-01-23"]
+
+    def test_condition_score_history_accumulates_across_calls(self, manifest, raw_bundle):
+        state = new_running_engine_state()
+        assert state.condition_score_history == {}
+        run_engine_for_date(self._DATES[0], raw_bundle, state, manifest)
+        assert self._DATES[0] in state.condition_score_history
+        run_engine_for_date(self._DATES[1], raw_bundle, state, manifest)
+        assert self._DATES[1] in state.condition_score_history
+        # The first date's entry must still be present — history
+        # accumulates, never gets overwritten/dropped by a later call.
+        assert self._DATES[0] in state.condition_score_history
+
+    def test_recorded_value_matches_that_dates_own_condition_score(self, manifest, raw_bundle):
+        state = new_running_engine_state()
+        record = run_engine_for_date(self._DATES[0], raw_bundle, state, manifest)
+        assert state.condition_score_history[self._DATES[0]] == record["condition_score"]
+
+    def test_impulse_score_is_genuinely_nonzero_once_enough_real_history_exists(self, manifest, raw_bundle):
+        """The direct regression test for the fix: run enough consecutive
+        real trading days for TEST_SCAFFOLDING_CONFIG's short horizons
+        (fast=5, slow=10) to have real t-h endpoints, and confirm
+        impulse_score is NOT mechanically 0.0 — the exact defect this
+        message fixes. (A genuinely-computed impulse_score landing on
+        precisely 0.0 by real coincidence is possible in principle but
+        vanishingly unlikely over 5 real dates; this is the same
+        pragmatic standard other real-formula tests in this file use.)"""
+        state = new_running_engine_state()
+        records = [run_engine_for_date(d, raw_bundle, state, manifest) for d in self._DATES]
+        # TEST_SCAFFOLDING_CONFIG's slow horizon is 10 sessions — the 11th
+        # date onward has a real t-h endpoint recorded in history.
+        later_records = records[10:]
+        assert later_records, "test fixture must include enough dates for a 10-session horizon"
+        nonzero_scores = [r["impulse_score"] for r in later_records if r["impulse_score"] is not None]
+        assert nonzero_scores, "impulse_score must be computable once enough history exists"
+        assert any(s != 0.0 for s in nonzero_scores)
+
+    def test_impulse_unavailable_before_enough_history_exists(self, manifest, raw_bundle):
+        """Fail-closed check: on the FIRST date of a fresh run, there is
+        no t-h history yet (0 prior recorded dates < any positive horizon
+        length) — impulse_score must be None (ImpulseUnavailableError
+        caught), never a fabricated 0.0 masquerading as "no change"."""
+        state = new_running_engine_state()
+        record = run_engine_for_date(self._DATES[0], raw_bundle, state, manifest)
+        assert record["impulse_score"] is None
+
+    def test_impulse_horizon_looks_up_real_t_minus_h_date_not_current_value(self, manifest, raw_bundle):
+        """Direct unit test of `_impulse_horizon` itself: construct a
+        history where the t-h date's value clearly differs from today's,
+        and confirm the horizon's endpoint_t_minus_h reflects the REAL
+        historical value, not today's."""
+        state = new_running_engine_state()
+        for d in self._DATES[:11]:
+            run_engine_for_date(d, raw_bundle, state, manifest)
+        as_of = self._DATES[10]
+        horizon = _impulse_horizon(raw_bundle.benchmark, state.condition_score_history, as_of, horizon_sessions=10)
+        assert horizon.endpoint_t.usable
+        assert horizon.endpoint_t_minus_h.usable
+        # The two endpoints must come from genuinely different real dates
+        # (10 sessions apart) with independently-computed condition_score
+        # values — not the same value duplicated (the old degenerate
+        # behavior this test would have caught).
+        t_minus_h_date = raw_bundle.benchmark.window_ending(as_of, 10)[0].date
+        assert horizon.endpoint_t_minus_h.value == state.condition_score_history[t_minus_h_date]
+
+    def test_interior_gap_makes_horizon_unavailable(self, manifest, raw_bundle):
+        """A missing interior date (never recorded, simulating a real gap)
+        must poison the whole horizon per design §11's own "invalid
+        required interior sessions make the horizon... unavailable" —
+        checked directly against `_impulse_horizon` with a history dict
+        that has a deliberate hole punched in the middle."""
+        state = new_running_engine_state()
+        for d in self._DATES[:11]:
+            run_engine_for_date(d, raw_bundle, state, manifest)
+        as_of = self._DATES[10]
+        history_with_gap = dict(state.condition_score_history)
+        # Punch a hole in a real interior date (strictly between t-h and
+        # t for a 10-session horizon ending at as_of).
+        interior_date = self._DATES[5]
+        assert interior_date in history_with_gap
+        del history_with_gap[interior_date]
+        horizon = _impulse_horizon(raw_bundle.benchmark, history_with_gap, as_of, horizon_sessions=10)
+        assert horizon.interior_all_valid is False
+
+    def test_two_independent_states_have_independent_histories(self, manifest, raw_bundle):
+        """Same 'never share across independent runs' discipline already
+        verified for direction/state_machine in TestPersistedStateAdvances,
+        extended to condition_score_history: two fresh states run on the
+        same dates must each accumulate their OWN history, not a shared
+        one (mutating one must never be visible through the other)."""
+        state1, state2 = new_running_engine_state(), new_running_engine_state()
+        run_engine_for_date(self._DATES[0], raw_bundle, state1, manifest)
+        assert state1.condition_score_history != {}
+        assert state2.condition_score_history == {}
 
 
 # ---------------------------------------------------------------------------

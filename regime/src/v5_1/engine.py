@@ -43,7 +43,7 @@ PILLAR WEIGHTS remain uncalibrated equal-weight placeholders regardless.
 **KNOWN LIMITATIONS, found during an independent senior-dev review
 (2026-08-27) and flagged here at the top rather than only in comments
 further down** — these mean the orchestrator's own wiring is real and
-sound, but two specific downstream computations it feeds are currently
+sound, but specific downstream computations it feeds were (one still is)
 STRUCTURALLY DEGENERATE, not merely "using placeholder numbers":
 
 1. **CRISIS can never fire through this orchestrator.**
@@ -56,29 +56,35 @@ STRUCTURALLY DEGENERATE, not merely "using placeholder numbers":
    arbitrary-threshold placeholder: a real CRISIS domain evaluator would
    at least sometimes fire on real 2020 COVID-era or other stress data,
    and this stub is constructed so it structurally cannot, by any input.
-2. **Impulse is always ~zero through this orchestrator.**
-   `_impulse_horizon()`'s `t-h` endpoint is set to the SAME value as the
-   `t` endpoint (`current_condition_score`) whenever no real historical
-   `condition_score` series is tracked (which is always, in this
-   orchestrator — it does not persist one). `raw_change` is therefore
-   always exactly zero whenever the horizon window exists, making
-   `impulse_score`/`impulse_fast`/`impulse_slow` structurally degenerate
-   in every real run, not just numerically small.
+   Still open — not addressed by item 2's fix below.
+2. **Impulse (FIXED per Message[207] — was previously always ~zero
+   through this orchestrator, see history below).**
+   `_impulse_horizon()`'s `t-h` endpoint used to be set to the SAME value
+   as the `t` endpoint (`current_condition_score`) because no real
+   historical `condition_score` series was tracked. Per the human's
+   explicit direction (Message[207], reversing this file's own prior
+   "explicitly out of this engine's own scope" framing below), this
+   orchestrator now persists a real per-run `condition_score_history` on
+   `RunningEngineState` (populated once per `run_engine_for_date` call, in
+   the SAME ascending-date order every other piece of cross-bar state in
+   this file already requires) and `_impulse_horizon()` looks up the REAL
+   `t-h` date's recorded value from it — `raw_change` is now a genuine,
+   nonzero (whenever the real history moved) computation, not a
+   structural zero. See `_impulse_horizon()`'s own docstring for the
+   exact lookup/fail-closed contract.
 
-Both limitations were previously disclosed only in the two functions' own
-docstrings/comments (see `_stub_crisis_domain_never_active` and
-`_impulse_horizon` below) — true, but not given the same prominence as
-the smaller "known gaps" list in Message[181]/[183] of the discussion log
-(`oas_change`, `binding_event_changes`, etc.). Fixing either limitation
-for real (a genuine CRISIS domain formula; a genuine tracked
-condition_score history feeding Impulse) is EMPIRICAL/calibration work
-explicitly out of this engine's own scope (per every prior slice's
-no-invented-defaults discipline) — it is not something this orchestrator
-should silently paper over with a more "realistic-looking" but equally
-arbitrary placeholder. Anyone using `replay.py`'s `crisis_entry_lag()` or
-any Impulse field through THIS orchestrator should know neither is
-currently capable of producing a real result — this is a real, not
-cosmetic, limitation of the current build.
+Item 1 (CRISIS) was previously disclosed only in
+`_stub_crisis_domain_never_active`'s own docstring/comment — true, but
+not given the same prominence as the smaller "known gaps" list in
+Message[181]/[183] of the discussion log (`oas_change`,
+`binding_event_changes`, etc.). Fixing CRISIS for real (a genuine CRISIS
+domain formula) remains EMPIRICAL/calibration work explicitly out of this
+engine's own scope (per every prior slice's no-invented-defaults
+discipline) — it is not something this orchestrator should silently paper
+over with a more "realistic-looking" but equally arbitrary placeholder.
+Anyone using `replay.py`'s `crisis_entry_lag()` through THIS orchestrator
+should know it is not currently capable of producing a real result — this
+is a real, not cosmetic, limitation of the current build.
 
 `run_engine_for_date()` wires together, in dependency order: Slice 2 (raw
 series) -> Slice 3/3b (Direction + TrendQuality) -> Slices 4/5/6 (Breadth/
@@ -521,6 +527,45 @@ REASONABLENESS_CHECK_CONFIG_MID_ALL = replace(
 )
 
 
+# REASONABLENESS_CHECK_CONFIG_REAL_IMPULSE — a SEVENTH scaffolding
+# instance, extending this investigation to Impulse (module 4.11) for the
+# first time — every prior config touched only Direction/Breadth.
+# `TestScaffoldingConfig.impulse_fast_horizon_sessions=5,
+# impulse_slow_horizon_sessions=10` is the SAME test-fixture-convenience
+# shortcut pattern already found in Direction's original 5/10/20 and
+# Breadth's original 5/10 (Messages[191]/[197]) — chosen so
+# `test_engine.py`'s synthetic short-history fixtures could exercise the
+# pipeline, never chosen for real-history investigation. Unlike Breadth's
+# blend-weight-style fields (SMA50/SMA200 mix, out of scope per
+# Message[199]'s deferral) and unlike Breadth's own invented 20/50 probe
+# point (no design citation), Impulse's horizons DO have a real design
+# citation: plan §17 item 14's own summary table labels this
+# "Impulse 5/20 tanh" (design plan, "Invariants/topology CLOSED; all
+# constants/transform EMPIRICAL") — 5/20 sessions, not 5/10. This config
+# swaps in that cited real value for the slow horizon, holding
+# Direction/Breadth at their original TEST_SCAFFOLDING_CONFIG values to
+# isolate Impulse's own sensitivity, same isolation discipline as every
+# prior single-pillar config. NOT a production default — same discipline
+# as every other config here. `impulse_weights` (a blend-weight-style
+# field) is deliberately left untouched, consistent with Message[199]'s
+# standing deferral of all weight-shaped EMPIRICAL parameters.
+#
+# IMPORTANT HISTORY (Message[207]): this config was originally built
+# BEFORE `_impulse_horizon()`'s structural degeneracy was discovered and
+# fixed — at that time, comparing this config against TEST_SCAFFOLDING_
+# CONFIG was IMPOSSIBLE to do meaningfully, since impulse_score was
+# mechanically ~0 regardless of horizon length (see the module docstring's
+# former "KNOWN LIMITATIONS" item 2). Per the human's explicit direction,
+# `RunningEngineState`/`_impulse_horizon()` were fixed to track a real
+# condition_score history — this config is NOW genuinely comparable
+# against TEST_SCAFFOLDING_CONFIG's 5/10, unlike when it was first built.
+REASONABLENESS_CHECK_CONFIG_REAL_IMPULSE = replace(
+    TEST_SCAFFOLDING_CONFIG,
+    impulse_fast_horizon_sessions=5,
+    impulse_slow_horizon_sessions=20,
+)
+
+
 @dataclass(frozen=True)
 class RawSeriesBundle:
     """Every raw series the orchestrator needs for one run, loaded once
@@ -554,20 +599,30 @@ def load_raw_series_bundle(manifest: Manifest) -> RawSeriesBundle:
 @dataclass
 class RunningEngineState:
     """The full set of mutable, cross-bar persisted state a multi-day
-    engine run needs — bundles DirectionConfirmationState (Slice 3) and
-    EngineState (Slice 8's CRISIS/ordinary/TRENDING). Constructed once per
-    independent run (a clean run and an injected run each get their OWN
+    engine run needs — bundles DirectionConfirmationState (Slice 3),
+    EngineState (Slice 8's CRISIS/ordinary/TRENDING), and (per Message[207]
+    — this used to be a structural gap, see the module docstring's former
+    "KNOWN LIMITATIONS" item 2, now fixed) `condition_score_history`, a
+    real per-date record of this SAME run's own finalized condition_score
+    values, keyed by `as_of` date string. Constructed once per independent
+    run (a clean run and an injected run each get their OWN
     RunningEngineState — never shared, since sharing would let one run's
-    history leak into the other's persisted counters)."""
+    history leak into the other's persisted counters). `condition_score_
+    history` is exactly this same "never share across independent runs"
+    discipline extended to Impulse's own real input — a run's Impulse
+    computation may only see ITS OWN prior condition_score values, never
+    another run's."""
 
     direction: DirectionConfirmationState
     state_machine: EngineState
+    condition_score_history: dict[str, float]
 
 
 def new_running_engine_state(config: TestScaffoldingConfig = TEST_SCAFFOLDING_CONFIG) -> RunningEngineState:
     return RunningEngineState(
         direction=DirectionConfirmationState(confirmation_bars=config.direction_confirmation_bars),
         state_machine=EngineState(),
+        condition_score_history={},
     )
 
 
@@ -666,6 +721,18 @@ def run_engine_for_date(
     except ConditionUnavailableError:
         condition_result = None
 
+    # Record this run's own real condition_score into the running history
+    # BEFORE the Impulse block below reads it back for OTHER (earlier)
+    # dates — per Message[207], this is what makes Impulse's horizons real
+    # rather than structurally degenerate (see module docstring's
+    # "KNOWN LIMITATIONS" item 2 / `_impulse_horizon()`'s own docstring).
+    # A None condition_score (this date unavailable) is NOT recorded —
+    # fail-closed, consistent with every other None-handling in this
+    # engine: a missing/unavailable date must read back as missing to a
+    # later Impulse lookup, never silently treated as "no change happened."
+    if condition_result is not None:
+        running_state.condition_score_history[as_of] = condition_result.condition_score
+
     any_hard_veto_active = bool(condition_result and condition_result.active_veto_ids)
 
     # --- State Machine (4.10) ---
@@ -697,8 +764,8 @@ def run_engine_for_date(
     # --- Impulse (4.9) ---
     impulse_result: ImpulseResult | None = None
     if condition_result is not None:
-        fast_h = _impulse_horizon(raw.benchmark, condition_result.condition_score, as_of, config.impulse_fast_horizon_sessions)
-        slow_h = _impulse_horizon(raw.benchmark, condition_result.condition_score, as_of, config.impulse_slow_horizon_sessions)
+        fast_h = _impulse_horizon(raw.benchmark, running_state.condition_score_history, as_of, config.impulse_fast_horizon_sessions)
+        slow_h = _impulse_horizon(raw.benchmark, running_state.condition_score_history, as_of, config.impulse_slow_horizon_sessions)
         try:
             impulse_result = compute_impulse(as_of, fast_h, slow_h, _stub_scale_estimator, _stub_odd_squashing_transform, config.impulse_weights)
         except ImpulseUnavailableError:
@@ -726,28 +793,74 @@ def _sma_or_none(series: RawSeries, as_of: str, window: int) -> float | None:
     return sum(o.value for o in w) / len(w)
 
 
-def _impulse_horizon(benchmark: RawSeries, current_condition_score: float, as_of: str, horizon_sessions: int) -> ImpulseHorizonInputs:
-    """Placeholder-scaffolding-only horizon construction: since this
-    orchestrator doesn't persist a real historical condition_score series
-    (that would require re-running the whole pipeline for every prior
-    date, which the deliberately-scoped Slice 10 assembler does not do
-    either), the t-h endpoint here is approximated using the SAME
-    condition_score as t whenever a real prior value isn't tracked — this
-    makes Impulse's OWN computation degenerate (near-zero change) in this
-    scaffolding, but the point of this orchestrator is exercising the
-    pipeline's WIRING for Slice 11's diff tool, not producing a
-    meaningful Impulse value. A caller needing a real Impulse horizon
-    would need to track a real condition_score history, which is future
-    work explicitly out of this scaffolding's scope."""
+def _impulse_horizon(
+    benchmark: RawSeries, condition_score_history: dict[str, float], as_of: str, horizon_sessions: int,
+) -> ImpulseHorizonInputs:
+    """Real horizon construction (per Message[207], replacing the
+    previously-structurally-degenerate version — see module docstring's
+    "KNOWN LIMITATIONS" item 2's history). Looks up the ACTUAL `t-h`
+    date's recorded `condition_score` from `condition_score_history`
+    (populated once per `run_engine_for_date` call, in ascending-date
+    order — see that function's own comment at the call site), rather
+    than substituting the current value.
+
+    `t-h` DATE identification reuses `benchmark.window_ending(as_of,
+    horizon_sessions)` — the SAME real trading-day-counting convention
+    every other EMPIRICAL window in this engine already uses (Direction's
+    MA windows, Breadth's SMA windows, `scoring.py`'s `forward_return`) —
+    rather than inventing a second date-counting scheme. The window's
+    OLDEST entry (`window[0]`) is the real `t-h` date; that date's
+    `condition_score_history` entry (if any) is `endpoint_t_minus_h`.
+
+    Fail-closed per design §11 ("missing/stale endpoints or invalid
+    required interior sessions make the horizon... unavailable") in THREE
+    independent ways, matching every other None-handling convention in
+    this engine:
+    - `endpoint_t` (today) is unusable if `as_of` was never recorded
+      (condition_result was None for this exact date — should not happen
+      given the call site only invokes this when condition_result is
+      NOT None, but checked directly rather than assumed);
+    - `endpoint_t_minus_h` is unusable if `benchmark.window_ending` itself
+      returns None (insufficient real trading-day history exists at all)
+      OR the real `t-h` date exists in the benchmark calendar but was
+      never recorded in `condition_score_history` (e.g. this run's own
+      history simply doesn't reach that far back yet, or `condition_result`
+      was genuinely unavailable that far back);
+    - `interior_all_valid` requires EVERY real trading day strictly
+      between `t-h` and `t` (the window's own interior entries) to also
+      have a recorded, present `condition_score_history` entry — a single
+      missing interior date poisons the whole horizon, per §11's own
+      requirement, not silently skipped."""
+    endpoint_t_value = condition_score_history.get(as_of)
+    endpoint_t = ImpulseEndpoint(value=endpoint_t_value, usable=endpoint_t_value is not None)
+
     window = benchmark.window_ending(as_of, horizon_sessions)
     if window is None:
-        endpoint_t_minus_h = ImpulseEndpoint(value=None, usable=False)
-        interior_valid = False
-    else:
-        endpoint_t_minus_h = ImpulseEndpoint(value=current_condition_score, usable=True)
-        interior_valid = True
+        return ImpulseHorizonInputs(
+            endpoint_t=endpoint_t,
+            endpoint_t_minus_h=ImpulseEndpoint(value=None, usable=False),
+            interior_all_valid=False,
+        )
+
+    t_minus_h_date = window[0].date
+    t_minus_h_value = condition_score_history.get(t_minus_h_date)
+    endpoint_t_minus_h = ImpulseEndpoint(value=t_minus_h_value, usable=t_minus_h_value is not None)
+
+    # Interior = every real trading day strictly between t-h and t, i.e.
+    # every window entry except the oldest (t-h, checked above as
+    # endpoint_t_minus_h) and the newest (window[-1] — the observation
+    # on-or-before as_of per window_ending's own contract; NOT necessarily
+    # exactly as_of if as_of itself isn't a trading day, but this
+    # engine's benchmark series is a real trading-day series and every
+    # caller of this function passes a real as_of, so window[-1] is as_of
+    # whenever the window exists at all — t's own validity is checked
+    # separately as endpoint_t above via the literal as_of key, not
+    # re-derived from window[-1] here, so this holds regardless).
+    interior_dates = [o.date for o in window[1:-1]]
+    interior_all_valid = all(condition_score_history.get(d) is not None for d in interior_dates)
+
     return ImpulseHorizonInputs(
-        endpoint_t=ImpulseEndpoint(value=current_condition_score, usable=True),
+        endpoint_t=endpoint_t,
         endpoint_t_minus_h=endpoint_t_minus_h,
-        interior_all_valid=interior_valid,
+        interior_all_valid=interior_all_valid,
     )
