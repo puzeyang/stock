@@ -409,6 +409,36 @@ REASONABLENESS_CHECK_CONFIG = replace(
 )
 
 
+# REASONABLENESS_CHECK_CONFIG_MID — a THIRD scaffolding instance, added per
+# the human's direct question (Message[196]): does a mid-length window
+# (8/21/65 — roughly half of 21/65/200) recover some of the short window's
+# fast-reversal responsiveness while still avoiding the false signals? NOT
+# a production default, same discipline as the other two configs.
+#
+# Answer, found by directly re-running the same 3 historical episodes
+# (Message[195]'s dates) with this config, not assumed from the window
+# length alone:
+# - 2020-07-01 false BEAR signal: RESOLVED (matches 21/65/200's fix).
+# - 2019-01-31 fast V-shaped reversal: PARTIALLY caught (NEUTRAL/BULL —
+#   better than 21/65/200's NEUTRAL/BEAR, but not as fast as 5/10/20's
+#   immediate RISK_ON/STRONG_BULL) — a real, genuine middle ground here.
+# - 2022-08-15 bear-market-rally overshoot: NOT RESOLVED — this config
+#   still gives RISK_ON/STRONG_BULL, the SAME wrong call as
+#   TEST_SCAFFOLDING_CONFIG's 5/10/20. 8/21/65 is not long enough to
+#   filter out a rally of this magnitude within an ongoing downtrend.
+#
+# Conclusion: 8/21/65 is NOT a strict improvement over 21/65/200 — it is a
+# different, genuine trade-off point on the same responsiveness-vs-noise
+# curve, one that happens to fail differently (still whipsaws on
+# large-magnitude bear-market rallies) rather than uniformly better. Kept
+# here as reusable infrastructure for continuing this comparison, not as
+# a recommendation.
+REASONABLENESS_CHECK_CONFIG_MID = replace(
+    TEST_SCAFFOLDING_CONFIG,
+    direction_horizons=DirectionHorizons(ema_fast=8, sma_mid=21, sma_long=65),
+)
+
+
 @dataclass(frozen=True)
 class RawSeriesBundle:
     """Every raw series the orchestrator needs for one run, loaded once
