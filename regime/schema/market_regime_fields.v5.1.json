@@ -161,7 +161,7 @@
     {
       "source_contract_id": "OAS_V5_1",
       "status": "EMPIRICAL",
-      "provider": "Federal Reserve Bank of St. Louis FRED",
+      "provider": "Federal Reserve Bank of St. Louis FRED (historical 1996-12-31 to 2026-02-06 segment sourced via a third-party GitHub archive, github.com/maaurocp/Trading_Protocol, commit bf64e83, since FRED itself began restricting BAMLH0A0HYM2 to a rolling 3-year window starting April 2026, per FRED's own series-page notice: \"Starting in April 2026, this series will only include 3 years of observations. For more data, go to the source.\"; the 2026-02-07 onward segment is this project's own direct FRED pull, unchanged from the prior snapshot)",
       "dataset": "ICE BofA US High Yield Index Option-Adjusted Spread",
       "symbol_or_collection": "BAMLH0A0HYM2",
       "field": "BAMLH0A0HYM2",
@@ -171,17 +171,17 @@
       "vintage_policy": "Content-addressed snapshot; refresh requires a new dataset_version and hashes before release.",
       "freshness_rule": "Refresh after each completed expected session; fail closed when the declared threshold is exceeded.",
       "missing_rule": "Required-input failure propagates null with reason; no silent fill.",
-      "splice_policy": "No silent source splice within a published dataset version.",
-      "dataset_version": "snapshot-2026-08-25",
+      "splice_policy": "No silent source splice within a published dataset version. NOTE: this specific snapshot IS a two-source splice by necessity (see provider field) — recorded here explicitly per that same no-silent-splice discipline, not silently done. The join was verified before adoption: the two segments' only overlapping date range (2023-08-25 to 2026-02-06, 651 observations) was checked value-by-value and found to match exactly (formatting differences like \"3.9\" vs \"3.90\" aside), and the boundary date (2026-02-06) itself matches between both segments.",
+      "dataset_version": "snapshot-2026-08-28",
       "source_tier": "canonical_production",
       "snapshot_paths": [
         "research/data/raw/BAMLH0A0HYM2.csv"
       ],
       "snapshot_sha256": {
-        "research/data/raw/BAMLH0A0HYM2.csv": "d92ee2ff780752cf172364bc5b3ae613f328bfc71fad3a8f8e0eeaa337fde354"
+        "research/data/raw/BAMLH0A0HYM2.csv": "ca6e1ca5ed3227706d7d050faf03049bb9f676e6e77881b13f4129c1af06270c"
       },
-      "refresh_policy": "Run the versioned updater after each completed session; recompute hashes and bump dataset_version before adoption.",
-      "notes": "FRED CSV snapshot; current endpoint coverage starts 2023-08-25.",
+      "refresh_policy": "Run the versioned updater after each completed session; recompute hashes and bump dataset_version before adoption. Future refreshes of the RECENT tail (post-2026-02-06) may continue to use the existing FRED CSV endpoint (still live for the rolling 3-year window); refreshing the pre-2023-08-25 historical segment, if ever needed again, requires locating a new independent archive, since FRED itself no longer serves it.",
+      "notes": "Re-sourced 2026-08-28 (Message[193]) to extend real coverage from 2023-08-25 back to 1996-12-31, fixing the OAS-coverage-length constraint that blocked Risk Appetite/Condition availability before 2025-07-29 (Message[190]/[191]). Verified against 3 known historical extremes before adoption: 2007-06-01 trough 2.41% (matches), 2008-12-12 GFC peak 21.3% (matches), 2020-03-23 COVID-crash level 10.87% (in the expected 10-11% range) — all independently corroborated by public web sources before this file was trusted.",
       "calendar": "FRED_BUSINESS_DAY",
       "observation_timestamp_policy": "CSV observation_date identifies the economic observation date; no intraday observation time is asserted.",
       "publication_timestamp_policy": "The CSV snapshot lacks per-row publication timestamps; retrieval timestamp is recorded by provenance, and same-day availability is not assumed.",

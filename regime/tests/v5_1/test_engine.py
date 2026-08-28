@@ -72,22 +72,27 @@ class TestEndToEndWiring:
             errors = validate_output(manifest, record)
             assert errors == [], f"{d}: unexpected validation errors: {errors}"
 
-    def test_pre_oas_dates_produce_unavailable_condition_and_state_not_a_crash(self, manifest, raw_bundle):
-        """2020 dates predate real OAS coverage (starts 2023-08-25) — Risk
-        Appetite, and therefore Condition, must be genuinely unavailable
-        (None), not an exception and not a fabricated value."""
+    def test_pre_vix9d_dates_produce_unavailable_condition_and_state_not_a_crash(self, manifest, raw_bundle):
+        """OAS was re-sourced 2026-08-28 (Message[193]) to extend real
+        coverage back to 1996-12-31, fixing the old OAS-coverage-length
+        constraint — Condition's real binding constraint is now VIX9D's own
+        coverage start (2018-06-22, confirmed empirically: 2018-06-22 itself
+        is the first date the engine produces a real condition_score, and
+        2018-06-21 does not exist as a VIX9D observation at all). A date
+        before that must still be genuinely unavailable (None), not an
+        exception and not a fabricated value."""
         state = new_running_engine_state()
-        record = run_engine_for_date("2020-04-15", raw_bundle, state, manifest)
+        record = run_engine_for_date("2018-01-16", raw_bundle, state, manifest)
         assert record["condition_score"] is None
         errors = validate_output(manifest, record)
         assert errors == []
 
     def test_direction_is_available_even_when_condition_is_not(self, manifest, raw_bundle):
         """Direction only needs benchmark price data (available since the
-        1990s) — it must be genuinely available on a 2020 date even though
-        Condition (which needs Risk Appetite's OAS-gated pillar) is not."""
+        1990s) — it must be genuinely available on an early date even though
+        Condition (which now needs Stability's VIX9D-gated domain) is not."""
         state = new_running_engine_state()
-        record = run_engine_for_date("2020-04-15", raw_bundle, state, manifest)
+        record = run_engine_for_date("2018-01-16", raw_bundle, state, manifest)
         assert record["direction_structure"] is not None
         assert record["condition_score"] is None
 
@@ -167,18 +172,19 @@ class TestScaffoldingConfigIsExplicit:
 
 class TestCreditTransform:
     def test_returns_none_before_504_session_oas_window_is_satisfiable(self, manifest):
-        """A real, structural finding from this phase: the pinned OAS
-        snapshot starts 2023-08-25, so the causal 504-session window isn't
-        satisfiable until 2025-07-29 — Risk Appetite (and therefore
-        Condition/state) is genuinely unavailable on every date before
-        that, not a bug, a real fail-closed consequence of insufficient
-        pinned history."""
+        """Re-derived after Message[193]'s OAS re-sourcing (real coverage
+        now starts 1996-12-31, not 2023-08-25 — see that message and
+        regime/README.md for why): the causal 504-session window over
+        OAS's OWN history alone is satisfiable starting 1998-12-08 (the
+        504th real observation). A date before that must still be
+        genuinely unavailable, per the same fail-closed discipline as
+        before, just at the new, much earlier true boundary."""
         oas = load_raw_series("oas_level", manifest)
-        assert _causal_midrank_credit_transform(oas, "2024-01-16") is None
+        assert _causal_midrank_credit_transform(oas, "1998-01-15") is None
 
     def test_returns_real_values_once_504_session_window_is_satisfiable(self, manifest):
         oas = load_raw_series("oas_level", manifest)
-        result = _causal_midrank_credit_transform(oas, "2025-08-01")
+        result = _causal_midrank_credit_transform(oas, "1999-06-01")
         assert result is not None
         credit_level_pct, credit_change_score = result
         assert 0.0 <= credit_level_pct <= 1.0
@@ -310,8 +316,12 @@ class TestDrawdownPriceDamageEstimator:
 class TestFullEngineWithRealFormulas:
     def test_engine_produces_a_non_none_condition_score_once_oas_window_is_satisfiable(self, manifest, raw_bundle):
         """End-to-end confirmation that the new real formulas actually let
-        Condition become available (not just each formula in isolation) —
-        run against a real post-2025-07-29 date."""
+        Condition become available (not just each formula in isolation).
+        Re-derived after Message[193]'s OAS re-sourcing: the binding
+        constraint on Condition's overall availability is no longer OAS
+        (which now has real history back to 1996-12-31) but VIX9D's own
+        coverage start (2018-06-22, confirmed empirically to be the exact
+        first date the full engine produces a real condition_score)."""
         state = new_running_engine_state()
         record = run_engine_for_date("2025-08-01", raw_bundle, state, manifest)
         assert record["condition_score"] is not None
@@ -320,8 +330,15 @@ class TestFullEngineWithRealFormulas:
         errors = validate_output(manifest, record)
         assert errors == []
 
-    def test_engine_condition_score_still_none_before_oas_window_is_satisfiable(self, manifest, raw_bundle):
+    def test_engine_condition_score_still_none_before_vix9d_coverage_starts(self, manifest, raw_bundle):
+        """2018-01-16 predates VIX9D's own coverage start (2018-06-22), so
+        Stability is unavailable, which alone makes condition_score
+        unavailable. Checked Risk Appetite directly too (not assumed) —
+        it's actually ALREADY available by this date (IWM's own 504-session
+        window opened 2002-06-03, long before 2018), so this test does not
+        assert on risk_appetite_score; the point being tested is Stability's
+        gate specifically."""
         state = new_running_engine_state()
-        record = run_engine_for_date("2024-01-16", raw_bundle, state, manifest)
+        record = run_engine_for_date("2018-01-16", raw_bundle, state, manifest)
         assert record["condition_score"] is None
-        assert record["risk_appetite_score"] is None
+        assert record["stability_score"] is None

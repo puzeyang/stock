@@ -161,8 +161,14 @@ class TestPointInTimeAccess:
         assert w[0].date == "2023-12-20"
 
     def test_window_ending_insufficient_history_returns_none(self, manifest):
+        """OAS's real coverage start moved earlier (Message[193]: re-sourced
+        from 2023-08-25 back to 1996-12-31, fixing the coverage-length
+        constraint that blocked Risk Appetite/Condition availability) — this
+        test's own date must move to match the CURRENT true start of history,
+        not the old one, to keep testing the same real fail-closed behavior
+        rather than a now-satisfiable window."""
         s = load_raw_series("oas_level", manifest)
-        w = s.window_ending("2023-08-25", 10)  # only 1 real observation exists this early
+        w = s.window_ending("1996-12-31", 10)  # only 1 real observation exists this early
         assert w is None
 
 
