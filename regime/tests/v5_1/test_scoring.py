@@ -30,6 +30,8 @@ from v5_1.raw_features import RawObservation, RawSeries  # noqa: E402
 from v5_1.scoring import (  # noqa: E402
     forward_return,
     vol_normalized_forward_return,
+    wilson_score_interval,
+    hit_rates_distinguishable,
     run_scored_replay,
     summarize_by_state,
     ScoredDate,
@@ -318,3 +320,83 @@ class TestRunScoredReplayIntegration:
         last_date = raw_bundle.benchmark.observations[-1].date
         result = run_scored_replay((last_date,), raw_bundle, manifest, config=TEST_SCAFFOLDING_CONFIG, horizon_sessions=20)
         assert result.scored_dates[0].forward_return is None
+
+
+# ---------------------------------------------------------------------------
+# wilson_score_interval + hit_rates_distinguishable (Message[206])
+# ---------------------------------------------------------------------------
+
+class TestWilsonScoreInterval:
+    def test_returns_zero_zero_for_n_zero(self):
+        assert wilson_score_interval(0, 0) == (0.0, 0.0)
+
+    def test_interval_contains_the_point_estimate(self):
+        low, high = wilson_score_interval(hits=30, n=45)  # 66.7%
+        assert low <= 30 / 45 <= high
+
+    def test_interval_never_exceeds_zero_one_bounds(self):
+        # Extreme case: all hits, small n — the naive normal approximation
+        # can push above 1.0 here; Wilson must not.
+        low, high = wilson_score_interval(hits=5, n=5)
+        assert 0.0 <= low <= high <= 1.0
+        # Extreme case: all misses.
+        low, high = wilson_score_interval(hits=0, n=5)
+        assert 0.0 <= low <= high <= 1.0
+
+    def test_interval_narrows_as_n_grows_at_the_same_proportion(self):
+        low_small, high_small = wilson_score_interval(hits=70, n=100)   # 70%
+        low_large, high_large = wilson_score_interval(hits=700, n=1000)  # 70%
+        assert (high_small - low_small) > (high_large - low_large)
+
+    def test_matches_known_reference_value(self):
+        # Textbook example: n=100, hits=50 (p=0.5) -> Wilson 95% CI is
+        # approximately (0.404, 0.596) (standard reference value, e.g.
+        # Newcombe 1998 Table I / any Wilson-interval calculator).
+        low, high = wilson_score_interval(hits=50, n=100)
+        assert low == pytest.approx(0.404, abs=0.001)
+        assert high == pytest.approx(0.596, abs=0.001)
+
+
+class TestHitRatesDistinguishable:
+    def _stats(self, hits, n):
+        low, high = wilson_score_interval(hits, n)
+        return StateForwardStats(
+            state="X", count=n, mean_forward_return=0.0, median_forward_return=0.0,
+            min_forward_return=0.0, max_forward_return=0.0, hit_rate=hits / n if n else 0.0,
+            hit_rate_ci_low=low, hit_rate_ci_high=high,
+            mean_vol_normalized_forward_return=None, vol_normalized_count=0,
+        )
+
+    def test_small_sample_gap_is_not_distinguishable(self):
+        # Reproduces the Message[201]/[204] scale directly: RISK_OFF
+        # 66.7% (n=81) vs RISK_ON 73.3% (n=45) — a real gap reported
+        # throughout Messages[201]-[205] as a bare point estimate, never
+        # checked against noise until now.
+        a = self._stats(hits=54, n=81)   # 66.7%
+        b = self._stats(hits=33, n=45)   # 73.3%
+        assert hit_rates_distinguishable(a, b) is False
+
+    def test_large_clearly_separated_gap_is_distinguishable(self):
+        a = self._stats(hits=200, n=1000)  # 20%
+        b = self._stats(hits=800, n=1000)  # 80%
+        assert hit_rates_distinguishable(a, b) is True
+
+    def test_identical_rates_are_never_distinguishable(self):
+        a = self._stats(hits=50, n=100)
+        b = self._stats(hits=50, n=100)
+        assert hit_rates_distinguishable(a, b) is False
+
+
+class TestSummarizeByStateConfidenceIntervals:
+    def test_ci_bounds_are_populated_and_contain_hit_rate(self):
+        result = ScoredReplayResult(
+            horizon_sessions=20,
+            scored_dates=tuple(
+                _sd(f"2024-01-{i:02d}", "RISK_ON", 0.8, 0.01 if i % 3 else -0.01)
+                for i in range(1, 11)
+            ),
+        )
+        stats = summarize_by_state(result)
+        s = stats[0]
+        assert s.hit_rate_ci_low <= s.hit_rate <= s.hit_rate_ci_high
+        assert 0.0 <= s.hit_rate_ci_low <= s.hit_rate_ci_high <= 1.0

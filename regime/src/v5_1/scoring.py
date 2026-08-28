@@ -62,6 +62,18 @@ moves are still large after accounting for how volatile the market
 already was), so a config comparison can separate "predicts direction
 better," "predicts a bigger-than-typical move," and "just happens to
 occur near naturally larger swings" instead of conflating all three.
+
+**Confidence intervals (added per Message[206], closing the gap
+Message[205] itself flagged as open)**: every `hit_rate` comparison in
+Messages[201]-[205] was a bare point estimate on sample sizes as small
+as n=45 per state group — no check that a reported gap (e.g. "71.1% vs
+73.6%") was distinguishable from what random noise alone could produce
+at that sample size. `summarize_by_state` now also reports
+`hit_rate_ci_low`/`hit_rate_ci_high` (a 95% Wilson score interval, the
+standard textbook choice for small/moderate-n binomial proportions —
+see `wilson_score_interval`), and `hit_rates_distinguishable` gives a
+conservative (non-overlapping-CIs) check for whether two groups'
+hit rates actually differ at the 95% level.
 """
 from __future__ import annotations
 
@@ -186,6 +198,41 @@ def run_scored_replay(
     return ScoredReplayResult(horizon_sessions=horizon_sessions, scored_dates=tuple(scored))
 
 
+_WILSON_Z_95 = 1.959963984540054  # z-score for a 95% two-sided normal CI, standard constant (Abramowitz & Stegun 26.2.23 / any statistics reference), not fit to this data
+
+
+def wilson_score_interval(hits: int, n: int, z: float = _WILSON_Z_95) -> tuple[float, float]:
+    """95% (by default) Wilson score confidence interval for a binomial
+    proportion `hits/n`. Added per Message[205]'s own flagged gap: every
+    `hit_rate` comparison in Messages[201]-[205] was reported as a bare
+    point estimate (e.g. "71.1% vs 73.6%") on sample sizes as small as
+    n=45-180 per group, with no check that the gap exceeds what random
+    noise alone could produce.
+
+    Wilson score, not the naive normal approximation (`p +/- z*sqrt(p(1-p)/n)`):
+    the naive interval can extend outside [0,1] and is known to behave
+    poorly at the sample sizes and hit rates seen throughout this
+    investigation (n in the tens to low hundreds, hit rates 60-80%) —
+    Wilson score stays within [0,1] by construction and is the standard
+    textbook recommendation for exactly this regime (Wilson 1927; e.g.
+    Brown/Cai/DasGupta 2001 recommends Wilson over the normal
+    approximation for small-to-moderate n). Not a novel formula — the
+    standard closed-form:
+    `(p + z^2/(2n) +/- z*sqrt(p(1-p)/n + z^2/(4n^2))) / (1 + z^2/n)`.
+
+    Returns `(0.0, 0.0)` if `n == 0` (fail-closed — no data means no
+    interval, not a degenerate [0,1] or [nan,nan])."""
+    if n == 0:
+        return (0.0, 0.0)
+    p = hits / n
+    denom = 1.0 + z * z / n
+    center = p + z * z / (2 * n)
+    spread = z * ((p * (1 - p) / n + z * z / (4 * n * n)) ** 0.5)
+    low = (center - spread) / denom
+    high = (center + spread) / denom
+    return (max(0.0, low), min(1.0, high))
+
+
 @dataclass(frozen=True)
 class StateForwardStats:
     state: str
@@ -195,6 +242,8 @@ class StateForwardStats:
     min_forward_return: float
     max_forward_return: float
     hit_rate: float
+    hit_rate_ci_low: float
+    hit_rate_ci_high: float
     mean_vol_normalized_forward_return: float | None
     vol_normalized_count: int
 
@@ -218,6 +267,15 @@ def summarize_by_state(result: ScoredReplayResult) -> tuple[StateForwardStats, .
     Message[202] found these can tell very different stories for the
     same state (RISK_OFF/RISK_ON had nearly identical hit rates despite
     a large mean-return gap).
+
+    `hit_rate_ci_low`/`hit_rate_ci_high` (added per Message[206],
+    addressing the gap Message[205] itself flagged as open): a 95%
+    Wilson score confidence interval around `hit_rate` (see
+    `wilson_score_interval`) — every hit-rate comparison in
+    Messages[201]-[205] reported bare point estimates on sample sizes as
+    small as n=45; these bounds let a caller check whether two configs'
+    hit rates are actually distinguishable from noise at this sample
+    size, rather than assuming any nonzero gap is meaningful.
 
     `mean_vol_normalized_forward_return`/`vol_normalized_count` (added
     per Message[203]): mean of `vol_normalized_forward_return` within
@@ -245,6 +303,8 @@ def summarize_by_state(result: ScoredReplayResult) -> tuple[StateForwardStats, .
         vol_norm_values = [sd.vol_normalized_forward_return for sd in group if sd.vol_normalized_forward_return is not None]
         mean_vol_norm = sum(vol_norm_values) / len(vol_norm_values) if vol_norm_values else None
 
+        ci_low, ci_high = wilson_score_interval(hits, n)
+
         stats.append(StateForwardStats(
             state=state_label,
             count=n,
@@ -253,7 +313,28 @@ def summarize_by_state(result: ScoredReplayResult) -> tuple[StateForwardStats, .
             min_forward_return=returns[0],
             max_forward_return=returns[-1],
             hit_rate=hits / n,
+            hit_rate_ci_low=ci_low,
+            hit_rate_ci_high=ci_high,
             mean_vol_normalized_forward_return=mean_vol_norm,
             vol_normalized_count=len(vol_norm_values),
         ))
     return tuple(stats)
+
+
+def hit_rates_distinguishable(a: StateForwardStats, b: StateForwardStats) -> bool:
+    """Cheap, honest check for whether two groups' hit rates are
+    distinguishable from noise at the 95% level: True if their Wilson
+    score confidence intervals do NOT overlap. This is a conservative
+    (non-overlapping-CIs) check, not a proper two-proportion hypothesis
+    test (e.g. a chi-squared or Fisher's exact test on the 2x2 table
+    would have more power and could find a significant difference even
+    when the individual CIs slightly overlap) — deliberately the
+    simpler, more conservative tool: it never claims two groups differ
+    unless their individual uncertainty ranges are already clearly
+    separated, at the cost of sometimes calling a real difference
+    "not distinguishable" when a sharper test would detect it. Given
+    this investigation's history of overgeneralizing point estimates
+    (Message[203]'s correction of Message[202]), erring conservative is
+    the right default here; a caller wanting more power can compare
+    `hit_rate_ci_low`/`hit_rate_ci_high` directly instead."""
+    return a.hit_rate_ci_high < b.hit_rate_ci_low or b.hit_rate_ci_high < a.hit_rate_ci_low
