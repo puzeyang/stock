@@ -262,7 +262,20 @@ class TestFailClosed:
         # Use VIX9D's own REAL pinned hash for the added path — the point of
         # this test is isolating the "too many paths" structural error, not
         # re-triggering the (separately tested) hash-mismatch error.
-        vix9d_real_hash = "30d81f9cae2f9e38e59b9729a22e74a30393168d92f3f0ed939143b0e1cd8b54"
+        #
+        # Found during self-review (2026-08-27, after the real VIX9D re-pin
+        # to IBKR per Message[191]/[192]): this test used to hardcode VIX9D's
+        # pinned hash as a literal string, which broke the moment that hash
+        # legitimately changed for an unrelated reason (the manifest's own
+        # snapshot re-pin, not a bug in this test's logic). Fixed to read the
+        # CURRENT real pinned hash straight from the manifest data this test
+        # already loaded, so it can never drift out of sync with whatever the
+        # manifest legitimately pins next.
+        vix9d_real_hash = None
+        for c in data["source_contracts"]:
+            if c["source_contract_id"] == "VIX9D_V5_1":
+                vix9d_real_hash = c["snapshot_sha256"]["research/technical-analysis/data/market/VIX9D.csv"]
+        assert vix9d_real_hash is not None, "test setup error: VIX9D_V5_1 contract not found in the real manifest"
         for c in data["source_contracts"]:
             if c["source_contract_id"] == "VIX_V5_1":
                 c["snapshot_paths"] = c["snapshot_paths"] + ["research/technical-analysis/data/market/VIX9D.csv"]

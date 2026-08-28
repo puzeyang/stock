@@ -289,9 +289,9 @@
     {
       "source_contract_id": "VIX9D_V5_1",
       "status": "EMPIRICAL",
-      "provider": "Yahoo Finance via yfinance 0.2.66; underlying index Cboe",
-      "dataset": "Yahoo Finance historical index snapshot",
-      "symbol_or_collection": "^VIX9D",
+      "provider": "Interactive Brokers (IB Gateway, reqHistoricalData) via ib_async 2.1.0; underlying index Cboe",
+      "dataset": "IBKR historical index snapshot (CBOE VIX9D, secType IND)",
+      "symbol_or_collection": "VIX9D",
       "field": "close",
       "frequency": "daily expected session",
       "timezone": "America/New_York",
@@ -300,16 +300,16 @@
       "freshness_rule": "Refresh after each completed expected session; fail closed when the declared threshold is exceeded.",
       "missing_rule": "Required-input failure propagates null with reason; no silent fill.",
       "splice_policy": "No silent source splice within a published dataset version.",
-      "dataset_version": "snapshot-2026-08-25",
+      "dataset_version": "snapshot-2026-08-27",
       "source_tier": "canonical_production",
       "snapshot_paths": [
         "research/technical-analysis/data/market/VIX9D.csv"
       ],
       "snapshot_sha256": {
-        "research/technical-analysis/data/market/VIX9D.csv": "30d81f9cae2f9e38e59b9729a22e74a30393168d92f3f0ed939143b0e1cd8b54"
+        "research/technical-analysis/data/market/VIX9D.csv": "88552bb2066f7a2740f5abdebc643811d56fcebbacc31503e526590c71017ee7"
       },
       "refresh_policy": "Run the versioned updater after each completed session; recompute hashes and bump dataset_version before adoption.",
-      "notes": "Canonical near-term curve input.",
+      "notes": "Canonical near-term curve input. Re-sourced from Yahoo Finance to IBKR 2026-08-27 after a real, unrecoverable multi-week gap was found in the Yahoo-sourced snapshot (Message[191]) — IBKR coverage starts 2018-06-22, shorter than Yahoo's pre-2018 history but with no internal gaps and full coverage of the engine's actual usable window (2023-08 onward, per the OAS coverage constraint).",
       "calendar": "CBOE_US_INDEX_XNYS_ALIGNED",
       "observation_timestamp_policy": "Daily index value is assigned to the labeled US session and treated as final only after the provider publishes the completed close.",
       "publication_timestamp_policy": "Snapshot retrieval timestamp is provenance; no earlier intraday publication is inferred from the date-only CSV.",
