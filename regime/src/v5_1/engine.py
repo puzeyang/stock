@@ -439,6 +439,24 @@ REASONABLENESS_CHECK_CONFIG_MID = replace(
 )
 
 
+# REASONABLENESS_CHECK_CONFIG_REAL_BREADTH — a FOURTH scaffolding instance,
+# per continued empirical study (Message[197]): `TestScaffoldingConfig`'s
+# `breadth_sma50_window=5, breadth_sma200_window=10` are the SAME kind of
+# test-fixture-convenience shortcut as Direction's original 5/10/20 MA
+# windows (per that field's own name, "SMA50"/"SMA200" implies 50/200
+# SESSIONS, not 5/10) — never chosen for real-history investigation. This
+# config swaps in the field's own literally-named real window lengths
+# (50/200 sessions), keeping every other value (including the still-short
+# Direction horizons) unchanged, to isolate Breadth's own sensitivity
+# specifically. NOT a production default, same discipline as the other
+# three configs.
+REASONABLENESS_CHECK_CONFIG_REAL_BREADTH = replace(
+    TEST_SCAFFOLDING_CONFIG,
+    breadth_sma50_window=50,
+    breadth_sma200_window=200,
+)
+
+
 @dataclass(frozen=True)
 class RawSeriesBundle:
     """Every raw series the orchestrator needs for one run, loaded once
