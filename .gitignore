@@ -12,3 +12,6 @@ __pycache__/
 *.pyc
 *.pyo
 .venv/
+
+# regime: continuous_domain_diagnostic_panel_v0 generated outputs (regeneratable, not source)
+regime/panels/*/outputs/

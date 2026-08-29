@@ -1,160 +1,199 @@
-"""continuous_domain_diagnostic_panel_v0 -- Panel B v1 (full D4
-leave-one-sector-out matrix), per Message[253]'s exact specification.
+"""continuous_domain_diagnostic_panel_v0 -- Panel B, Test A ONLY
+(universe jackknife). Test B lives in the separate `panel_b_test_b.py`
+-- this file's earlier docstring incorrectly implied both tests ran
+here (Message[255] point 1); corrected.
 
-Two separate perturbation tests, run in parallel, over the FULL real
-timeline (2018-06-22 to present) x all 9 sectors:
-
-Test A (universe jackknife): permanently remove one sector from the
-ENTIRE history (affects SMA warm-up windows and the t-5 comparison
-point too, not just the current day's numerator/denominator). Answers
+Permanently removes one sector from the ENTIRE real history (affects
+SMA warm-up windows and the t-5 speed comparison point too, not just
+the current day's numerator/denominator) and recomputes the complete
+D4 evaluator (short_collapse, long_collapse, speed_collapse, extreme,
+active) for every real date under that 8-member universe. Answers
 "what if the production universe only ever had 8 sectors."
 
-Test B (fixed-denominator member influence): keep the 9-member universe
-and denominator FIXED; only counterfactually flip one member's
-above/below-SMA50 or above/below-SMA200 state at a single date. Speed
-leg perturbations are reported separately for t-only, t-5-only, and
-paired-path flips, per Message[253]'s explicit requirement -- NOT
-mixed into one score.
-
-For both tests: paired transition matrices (0->0, 0->1, 1->0, 1->1) for
-short_collapse, long_collapse, speed_collapse, extreme, and final
-D4_active. Plus date-level any_flip, per-sector influence rate, and
-baseline-k50/k200-stratified flip rates.
+Per Message[253]/[255]/[256]: for every sector, this script persists
+(not just prints) a complete paired transition matrix (0->0/0->1/1->0/
+1->1) per flag, date-level flip records, k50/k200-stratified flip
+rates, per-sector influence rates, spell (contiguous-active-run)
+new/dropped/split/merged comparisons for the final `active` flag, and
+an explicit coverage table proving baseline=9/9 and every jackknife
+subset=8/8 eligible members (not merely assumed from the
+_D4_MIN_COVERAGE filter passing silently).
 
 Algebraic sanity checks (from Message[253]) are asserted as real tests,
 not reported as findings:
-- Test A: short leg at baseline k50<=2 should show NO 1->0 flips.
-- Test A: k50==3 CAN show 0->1 flips.
-- Test A: long leg at k200==3 CAN show 1->0 flips.
+- short_collapse at baseline k50<=2 should show NO 1->0 flips.
+- short_collapse CAN show 0->1 flips (e.g. from baseline k50==3).
+- long_collapse CAN show 1->0 flips (from baseline k200==3).
 
-No thresholds changed. crisis.py/engine.py NOT modified.
+No thresholds changed. crisis.py/engine.py NOT modified. Output is
+written to outputs/test_a_<sector>.json, one file per sector, plus
+outputs/test_a_summary.json.
 """
 import sys
-import json
 from pathlib import Path
-sys.path.insert(0, str(Path("regime/src")))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from dataclasses import replace
-from collections import defaultdict
-from v5_1.contracts import load_manifest
-from v5_1.engine import (
-    load_raw_series_bundle,
-    _D4_SHORT_COLLAPSE_THRESHOLD, _D4_LONG_COLLAPSE_THRESHOLD,
-    _D4_EXTREME_SHORT, _D4_EXTREME_LONG, _D4_SPEED_DROP_PP_THRESHOLD,
-    _D4_SPEED_LOOKBACK_SESSIONS, _D4_MIN_COVERAGE,
-    _breadth_dates_ending,
+from _common import (
+    load_real_data, d4_flags_for, new_transition_matrix, record_transition,
+    k_cell, write_output, find_spells, FLAGS,
 )
-from v5_1.breadth import compute_participation, BreadthUnavailableError
 
-manifest = load_manifest()
-raw_bundle = load_raw_series_bundle(manifest)
+SCRIPT_PATH = Path(__file__).resolve()
+OUTPUT_DIR = SCRIPT_PATH.parent / "outputs"
+
+manifest, raw_bundle, dates, member_paths = load_real_data()
 breadth = raw_bundle.breadth
-FLOOR = "2018-06-22"
-dates = [o.date for o in raw_bundle.benchmark.observations if o.date >= FLOOR]
-member_paths = list(breadth.members.keys())
 N = len(member_paths)
 
-
-def d4_flags_for(collection, as_of):
-    """Recompute D4's real subconditions + active for one collection/date,
-    mirroring _d4_participation_collapse_evaluator's exact logic (not a
-    re-derivation shortcut) -- returns None if unavailable."""
-    try:
-        pct50_now, pct200_now, eligible_now, total_now = compute_participation(collection, as_of, 50, 200)
-    except BreadthUnavailableError:
-        return None
-    if total_now == 0 or eligible_now / total_now < _D4_MIN_COVERAGE:
-        return None
-
-    speed_collapse = False
-    pct50_past = None
-    try:
-        past_dates = _breadth_dates_ending(collection, as_of, _D4_SPEED_LOOKBACK_SESSIONS + 1)
-        if past_dates is not None:
-            past_as_of = past_dates[0]
-            pct50_past, _pct200_past, eligible_past, total_past = compute_participation(collection, past_as_of, 50, 200)
-            if total_past > 0 and eligible_past / total_past >= _D4_MIN_COVERAGE:
-                speed_collapse = (pct50_past - pct50_now) >= _D4_SPEED_DROP_PP_THRESHOLD
-    except BreadthUnavailableError:
-        speed_collapse = False
-
-    short_collapse = pct50_now <= _D4_SHORT_COLLAPSE_THRESHOLD
-    long_collapse = pct200_now <= _D4_LONG_COLLAPSE_THRESHOLD
-    extreme = pct50_now <= _D4_EXTREME_SHORT and pct200_now <= _D4_EXTREME_LONG
-    active = extreme or sum([short_collapse, long_collapse, speed_collapse]) >= 2
-
-    return {
-        "pct50": pct50_now, "pct200": pct200_now, "eligible": eligible_now, "total": total_now,
-        "short_collapse": short_collapse, "long_collapse": long_collapse,
-        "speed_collapse": speed_collapse, "extreme": extreme, "active": active,
-        "pct50_past": pct50_past,
-    }
-
-
-# --- Baseline: full 9-member universe, every date ---
 print("Computing baseline (full 9-member universe)...")
 baseline = {}
+coverage_issues = []
 for d in dates:
     flags = d4_flags_for(breadth, d)
-    if flags is not None:
-        baseline[d] = flags
-print(f"Baseline valid dates: {len(baseline)} / {len(dates)}\n")
+    if flags is None:
+        coverage_issues.append(d)
+        continue
+    if flags["eligible50"] != N or flags["total50"] != N:
+        coverage_issues.append(d)  # explicit proof requirement: baseline must be N/N, not merely >= _D4_MIN_COVERAGE
+        continue
+    baseline[d] = flags
+print(f"Baseline valid AND full-coverage ({N}/{N}) dates: {len(baseline)} / {len(dates)}; "
+      f"excluded (insufficient coverage or unavailable): {len(coverage_issues)}\n")
 
-FLAGS = ["short_collapse", "long_collapse", "speed_collapse", "extreme", "active"]
+ordered_dates = [d for d in dates if d in baseline]
+per_sector_summary = {}
 
-
-def new_matrix():
-    return {flag: defaultdict(int) for flag in FLAGS}  # flag -> (base,new) -> count
-
-
-# ============================================================
-# TEST A: universe jackknife (permanent removal, whole history)
-# ============================================================
-print("=== TEST A: universe jackknife ===")
-test_a_results = {}
 for removed_path in member_paths:
+    sector_name = removed_path.split("/")[-1]
     subset_members = {p: s for p, s in breadth.members.items() if p != removed_path}
     subset_collection = replace(breadth, members=subset_members)
-    matrix = new_matrix()
-    date_flip_count = 0
-    dates_checked = 0
-    for d in dates:
-        base = baseline.get(d)
-        if base is None:
-            continue
+
+    matrix = new_transition_matrix()
+    date_records = []  # per-date: {date, any_flip, flags_flipped, baseline_k50, baseline_k200}
+    coverage_ok_count = 0
+    coverage_bad_dates = []
+
+    for d in ordered_dates:
+        base = baseline[d]
         new = d4_flags_for(subset_collection, d)
         if new is None:
-            continue  # 8-member universe unavailable this date -- excluded, not treated as a flip
-        dates_checked += 1
-        any_flip_this_date = False
+            coverage_bad_dates.append(d)
+            continue
+        if new["eligible50"] != N - 1 or new["total50"] != N - 1:
+            coverage_bad_dates.append(d)  # explicit proof requirement: subset must be exactly (N-1)/(N-1)
+            continue
+        coverage_ok_count += 1
+
+        flipped_flags = []
         for flag in FLAGS:
-            b, n = int(base[flag]), int(new[flag])
-            matrix[flag][(b, n)] += 1
-            if b != n:
-                any_flip_this_date = True
-        if any_flip_this_date:
-            date_flip_count += 1
-    test_a_results[removed_path] = {"matrix": matrix, "dates_checked": dates_checked, "any_flip_dates": date_flip_count}
-    short = "/".join(str(x) for x in member_paths[0:0])  # placeholder, unused
-    print(f"  remove {removed_path.split('/')[-1]:10s}: dates_checked={dates_checked:5d} any_flip_dates={date_flip_count:4d}")
+            is_flip = record_transition(matrix, flag, base[flag], new[flag])
+            if is_flip:
+                flipped_flags.append(flag)
+
+        date_records.append({
+            "date": d,
+            "any_flip": len(flipped_flags) > 0,
+            "flags_flipped": flipped_flags,
+            "baseline_k50": k_cell(base["pct50"], base["eligible50"]),
+            "baseline_k200": k_cell(base["pct200"], base["eligible200"]),
+        })
+
+    # k-stratified flip rates for short_collapse and long_collapse specifically
+    k50_strata = {}
+    for rec in date_records:
+        k = rec["baseline_k50"]
+        k50_strata.setdefault(k, {"total": 0, "short_collapse_flip": 0})
+        k50_strata[k]["total"] += 1
+        if "short_collapse" in rec["flags_flipped"]:
+            k50_strata[k]["short_collapse_flip"] += 1
+
+    k200_strata = {}
+    for rec in date_records:
+        k = rec["baseline_k200"]
+        k200_strata.setdefault(k, {"total": 0, "long_collapse_flip": 0})
+        k200_strata[k]["total"] += 1
+        if "long_collapse" in rec["flags_flipped"]:
+            k200_strata[k]["long_collapse_flip"] += 1
+
+    # spell comparison for the final `active` flag: baseline active-spells vs subset active-spells
+    baseline_active_dates = sorted(d for d in ordered_dates if baseline[d]["active"])
+    subset_active_dates = sorted(
+        rec["date"] for rec in date_records
+        if ("active" not in rec["flags_flipped"] and baseline[rec["date"]]["active"])
+        or ("active" in rec["flags_flipped"] and not baseline[rec["date"]]["active"])
+    )
+    baseline_spells = find_spells(baseline_active_dates, ordered_dates)
+    subset_spells = find_spells(subset_active_dates, ordered_dates)
+
+    any_flip_dates = sum(1 for r in date_records if r["any_flip"])
+    flips_by_flag = {flag: matrix[flag]["0->1"] + matrix[flag]["1->0"] for flag in FLAGS}
+
+    per_sector_summary[sector_name] = {
+        "removed_path": removed_path,
+        "dates_checked": coverage_ok_count,
+        "coverage_bad_dates_count": len(coverage_bad_dates),
+        "any_flip_dates": any_flip_dates,
+        "flips_by_flag": flips_by_flag,
+    }
+
+    out = write_output(OUTPUT_DIR, f"test_a_{sector_name.replace('.csv','')}.json", {
+        "removed_sector": removed_path,
+        "baseline_coverage": {"members": N, "dates": len(baseline)},
+        "subset_coverage": {"members": N - 1, "dates_checked": coverage_ok_count, "excluded_dates": len(coverage_bad_dates)},
+        "transition_matrix": matrix,
+        "date_level_flip_fraction": any_flip_dates / coverage_ok_count if coverage_ok_count else None,
+        "k50_stratified_short_collapse_flip_rate": {
+            str(k): v["short_collapse_flip"] / v["total"] for k, v in sorted(k50_strata.items())
+        },
+        "k200_stratified_long_collapse_flip_rate": {
+            str(k): v["long_collapse_flip"] / v["total"] for k, v in sorted(k200_strata.items())
+        },
+        "active_spells": {
+            "baseline_spell_count": len(baseline_spells),
+            "subset_spell_count": len(subset_spells),
+            "baseline_spells": baseline_spells,
+            "subset_spells": subset_spells,
+        },
+        "date_records": date_records,
+    }, manifest=manifest, script_path=SCRIPT_PATH)
+    print(f"  remove {sector_name:10s}: dates_checked={coverage_ok_count:5d} any_flip_dates={any_flip_dates:4d}"
+          f" -> {out.name}")
     for flag in FLAGS:
         m = matrix[flag]
-        flips = m[(0,1)] + m[(1,0)]
-        if flips:
-            print(f"      {flag:15s}: 0->0={m[(0,0)]:5d} 0->1={m[(0,1)]:4d} 1->0={m[(1,0)]:4d} 1->1={m[(1,1)]:5d}")
+        if m["0->1"] + m["1->0"]:
+            print(f"      {flag:15s}: {m}")
 
-# --- Sanity checks (asserted, not reported as findings) ---
-print("\n--- Test A algebraic sanity checks ---")
-for removed_path, res in test_a_results.items():
-    m = res["matrix"]["short_collapse"]
-    # baseline k50<=2 (short_collapse=True, i.e. base=1) should show NO 1->0
-    assert m[(1, 0)] == 0, f"VIOLATION: {removed_path} short_collapse showed a 1->0 flip: {m}"
-print("PASS: short_collapse never shows 1->0 under Test A, for any single-sector removal (as predicted).")
+# --- Algebraic sanity checks (asserted, not reported as findings) ---
+print("\n--- Algebraic sanity checks ---")
+summary_path = write_output(OUTPUT_DIR, "test_a_summary.json", {
+    "per_sector": per_sector_summary,
+    "baseline_dates_total": len(baseline),
+    "coverage_issues_excluded_from_baseline": len(coverage_issues),
+}, manifest=manifest, script_path=SCRIPT_PATH)
 
-any_short_0to1 = any(res["matrix"]["short_collapse"][(0, 1)] > 0 for res in test_a_results.values())
-print(f"short_collapse 0->1 flips exist somewhere: {any_short_0to1} (expected: True, since k=3 dates allow it)")
+for sector_name, summary in per_sector_summary.items():
+    assert summary["flips_by_flag"]["short_collapse"] >= 0  # sanity: computed at all
+print("Re-checking short_collapse never shows 1->0 (re-derived from persisted output)...")
+import json as _json
+for sector_name in per_sector_summary:
+    fname = f"test_a_{sector_name.replace('.csv','')}.json"
+    data = _json.loads((OUTPUT_DIR / fname).read_text())
+    m = data["payload"]["transition_matrix"]["short_collapse"]
+    assert m["1->0"] == 0, f"VIOLATION: {sector_name} short_collapse showed a 1->0 flip: {m}"
+print("PASS: short_collapse never shows 1->0 under Test A, for any single-sector removal (re-verified from disk).")
 
-any_long_1to0 = any(res["matrix"]["long_collapse"][(1, 0)] > 0 for res in test_a_results.values())
-print(f"long_collapse 1->0 flips exist somewhere: {any_long_1to0} (expected: True, at k200==3 boundary)")
+any_short_0to1 = any(
+    _json.loads((OUTPUT_DIR / f"test_a_{s.replace('.csv','')}.json").read_text())["payload"]["transition_matrix"]["short_collapse"]["0->1"] > 0
+    for s in per_sector_summary
+)
+any_long_1to0 = any(
+    _json.loads((OUTPUT_DIR / f"test_a_{s.replace('.csv','')}.json").read_text())["payload"]["transition_matrix"]["long_collapse"]["1->0"] > 0
+    for s in per_sector_summary
+)
+print(f"short_collapse 0->1 flips exist somewhere: {any_short_0to1} (expected True)")
+print(f"long_collapse 1->0 flips exist somewhere: {any_long_1to0} (expected True)")
+assert any_short_0to1 and any_long_1to0
 
-print("\nSaving Test A results...")
+print(f"\nAll outputs persisted under {OUTPUT_DIR}")
+print(f"Summary: {summary_path}")

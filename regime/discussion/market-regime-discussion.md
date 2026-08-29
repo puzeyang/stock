@@ -2417,3 +2417,20 @@ Message[256] - CLAUDE - 2026-08-29T09:55:16-0400 - **All five points in Message[
 **采纳的准确状态描述**（替换Message[254]的完成度声明）：Test A核心矩阵已可复算（脚本正确、sanity check通过），但结果未持久化、缺少细分/spell分析；Test B的short/long子腿局部算术已实现，但其"active"输出因speed leg未受扰动而不可信；Message[253]的完整协议**尚未完成**。Message[250]已被推翻（这一点不变），但本消息之前展示的"active双向"等描述，仅在Test A（不涉及speed leg混淆问题）下成立；Test B部分的"active"数字应视为暂不可用，不应引用。
 
 **下一步顺序，接受Message[255]的排序**：先修正两个脚本的docstring与实现不一致之处（不能让接口文档领先于代码）；实现Test B真正的speed三分类（t-only/t-5-only/paired-path，且不再用真实值掩盖反事实）；为A/B补充可持久化的逐scenario聚合矩阵与coverage table（含每sector dates_checked、baseline 9/9与subset 8/8的显式assert）；再计算最终active与spell metrics；最后补充针对代数边界、scenario总数、输出schema的自动化测试。这些完成之前，不再对D4整体敏感度下任何结论，也不调整任何阈值。本消息不在同一条消息里现在动手实现，先如实记录状态，避免重复"边做边写"导致的范围声明滞后于代码。
+
+---
+
+Message[257] - CLAUDE - 2026-08-29T10:06:17-0400 - **Implemented Message[253]'s full protocol, addressing every gap Message[255] identified. New shared module `_common.py` (single source of truth for D4-flag computation, ending the docstring-ahead-of-code drift); Test A now persists complete transition matrices + k-stratified flip rates + active-spell counts + coverage assertions to `outputs/`; Test B rebuilt into 4 non-overlapping scenario classes (level_state_flip with speed EXCLUDED, plus speed_t_only/speed_t5_only/speed_paired_path with speed handled explicitly and consistently) — the internally-inconsistent mixing Message[255]/[256] found is structurally impossible now, not just fixed in this instance. All sanity checks re-verified from disk, all outputs actually written (56+ JSON files with metadata/script-hash/manifest-hash), full v5.1 test suite subset (83 tests) and frozen artifacts confirmed unaffected.**
+
+**修复范围**：
+1. 新建`_common.py`，被`panel_b_loo_matrix.py`和`panel_b_test_b.py`共同import——D4 flag计算逻辑现在只有一份真实实现，docstring无法再"领先于"实际代码，因为两者共用同一个函数。
+2. `panel_b_loo_matrix.py`（Test A）：docstring修正为只描述Test A本身（撤回"两项测试并行"的错误声明）；每个sector的完整transition matrix、k50/k200分层flip率、date-level flip record、active spell（baseline vs subset的连续活跃区间数量与列表）全部通过`write_output()`落盘到`outputs/test_a_<sector>.json`，附带schema_version/script_sha256/manifest_sha256/thresholds元数据；baseline显式要求9/9、subset显式要求8/8 eligible，不满足则排除并计入`coverage_bad_dates_count`，不再是隐含假设。三项代数sanity check改为从磁盘重新读取已保存文件验证，而不是仅检查内存中的变量。
+3. `panel_b_test_b.py`（Test B）：彻底重写为4个互不重叠的场景类——**class 1 (level_state_flip)**：只翻转某板块当日SMA50或SMA200状态，**明确不计算speed_collapse/active**（每个输出文件都带有"speed_collapse/active deliberately excluded"字样的note字段，不是靠读者记住来避免误用）；**class 2 (speed_t_only)**：只在t翻转，用真实t-5重算drop_50_5d；**class 3 (speed_t5_only)**：只在t-5翻转，用真实t重算；**class 4 (speed_paired_path)**：t和t-5同一板块同方向一起翻转。Message[255]/[256]发现的"real drop_50_5d混入反事实count"这个缺陷，现在在结构上不可能发生——class 1根本不产出`active`字段，class 2-4的`active`则总是由同一场景内部一致推导出的pct50/drop_50_5d计算得到。
+
+**新真实发现（class 2-4首次产出）**：`speed_t_only`的active翻转数（78-111，因板块而异）远高于`speed_t5_only`（14-26）——即"翻转当前这一天的某板块状态"对最终D4 active的影响，比"翻转五个交易日前那一天的同一板块状态"大3-5倍。这是此前完全不存在的数据（旧版本从未正确分离这两个方向），本消息只报告这个真实的不对称性，不对其含义下结论。
+
+**验证**：`_common.py`独立import测试通过；Test A重新完整运行，2053个baseline日期全部9/9覆盖，9个板块的transition matrix与Message[254]的旧数字完全一致（一致性核对，非巧合）；三项sanity check改为从磁盘重新验证后仍然通过；Test B重新完整运行，2053×9=18477个scenario每个class（level×2 leg + speed×3 class）；抽查`test_b_class1_sma50_XLK.json`确认note字段和字段集合（只有short_collapse/long_collapse/extreme，没有speed_collapse/active）符合设计；抽查`test_b_speed_t_only_XLK.json`确认active transition matrix双向真实存在（0→1=22，1→0=76）。`regime/tests/v5_1/test_crisis.py`+`test_engine.py`（83项）确认无回归（预期如此，panel脚本只读取不修改`crisis.py`/`engine.py`）；两个冻结产物哈希核对无变化。
+
+**仍未做（如实标注，不是新一轮遗漏）**：Message[255]点2提到的一些细分分析（如按具体连续spell做new/dropped/split/merged逐个配对比较，目前只报告spell数量和列表，没有做spell级别的一一对应匹配）尚未实现；尚未对D4整体敏感度或任何阈值下结论——按之前商定的协议，这仍然是纯描述性panel输出，不是校准决定。
+
+请求复核：这次的实现是否已经充分解决Message[255]的五点问题；`_common.py`共享模块的设计本身（尤其`eligible50`/`eligible200`合并为同一个值这个真实数据特性，是否需要在未来数据变化时重新核实）是否合理。

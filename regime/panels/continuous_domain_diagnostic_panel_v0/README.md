@@ -16,21 +16,33 @@ itself make a finding confirmatory.
 
 ## Scripts
 
+- `_common.py` — shared D4-flag computation, transition-matrix helpers,
+  and JSON output writer, imported by both Test A and Test B scripts
+  below. Single source of truth so a script's docstring cannot drift
+  ahead of its actual implementation the way Message[255] found
+  `panel_b_loo_matrix.py`/`panel_b_test_b.py` had. Not imported by
+  `crisis.py`/`engine.py` — has no production effect.
 - `panel_b_loo_matrix.py` — D4 Test A (universe jackknife): permanently
   removes one sector from the entire real history (affects SMA warm-up
-  windows and the t-5 speed comparison too) and recomputes
-  short_collapse/long_collapse/speed_collapse/extreme/active for every
-  real date, producing a paired transition matrix (0→0/0→1/1→0/1→1)
-  per sector per flag. Includes algebraic sanity-check assertions
-  (Message[253]) that fail loudly if the real data ever contradicts
-  the inequality-derived predictions.
+  windows and the t-5 speed comparison too) and recomputes the
+  complete D4 evaluator for every real date under that 8-member
+  universe. Persists per-sector transition matrices, k50/k200-
+  stratified flip rates, date-level flip records, and active-spell
+  counts to `outputs/`. Includes algebraic sanity-check assertions
+  (Message[253]), re-verified from the persisted output on disk, not
+  just in-memory state.
 - `panel_b_test_b.py` — D4 Test B (fixed-denominator member influence):
-  keeps the real 9-member universe and denominator fixed; only
-  counterfactually flips one member's real above/below-SMA state at a
-  single date, isolating single-member influence from the
-  9→8 denominator effect Test A conflates it with. **Speed-leg
-  t-only/t-5-only/paired-path split is NOT YET implemented** (flagged
-  as an open gap in Message[254], not silently completed).
+  keeps the real 9-member universe and denominator fixed; runs FOUR
+  non-overlapping scenario classes, never mixed into one score —
+  `level_state_flip` (short/long/extreme only, speed explicitly
+  EXCLUDED, not silently held at its real value while claiming to
+  report `active`) and `speed_t_only`/`speed_t5_only`/
+  `speed_paired_path` (each handles both endpoints of `drop_50_5d`
+  explicitly and consistently, so `active` is trustworthy for these
+  three). Fixes the internally-inconsistent mixing (real speed value
+  used alongside a counterfactual current-day count) Message[255]/
+  [256] found in the prior version — structurally impossible now,
+  since `level_state_flip` cannot produce an `active` field at all.
 - `diagnostic_panel_d2.py` — D2 absolute/relative branch contingency
   table across the full real timeline (Message[249]).
 - `diagnostic_panel_d4.py` — original single-sided D4 short_collapse
@@ -53,3 +65,14 @@ python3 regime/panels/continuous_domain_diagnostic_panel_v0/diagnostic_panel_d2.
 They read the same real pinned CSVs as `regime/tests/v5_1/` via
 `load_manifest()`/`load_raw_series_bundle()` — no synthetic fixtures,
 no network access.
+
+## Outputs
+
+`outputs/*.json` — one file per sector per scenario (Test A) or per
+sector per scenario class (Test B), plus `*_summary.json` files. Every
+file carries `schema_version: continuous_domain_diagnostic_panel_v0.outputs.v1`
+and a `metadata` block (script path/hash, input manifest hash, D4
+threshold constants, date floor) so a result can always be traced back
+to the exact code and data that produced it. Regenerated on every
+script run — not hand-edited, not committed as a claim of a completed
+validation study (see the non-preregistered caveat above).
