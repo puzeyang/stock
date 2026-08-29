@@ -129,10 +129,15 @@ def sha256_of_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def write_output(output_dir: Path, filename: str, payload: dict, *, manifest, script_path: Path) -> Path:
+def write_output(output_dir: Path, filename: str, payload: dict, *, manifest, script_path: Path, thresholds: dict | None = None) -> Path:
     """Persist one panel result as JSON with a standard metadata block --
     script hash, input manifest hash, thresholds, schema version. Fixes
-    Message[255]/[256]'s finding that no result was ever actually saved."""
+    Message[255]/[256]'s finding that no result was ever actually saved.
+    `thresholds` defaults to D4_THRESHOLDS for backward compatibility
+    with the D4 (Test A/B) scripts written before this parameter existed
+    -- pass the domain-appropriate threshold dict explicitly for any
+    non-D4 panel (e.g. Panel C's D1 thresholds), so the metadata block
+    never silently mislabels which domain's constants it's recording."""
     output_dir.mkdir(parents=True, exist_ok=True)
     full = {
         "schema_version": "continuous_domain_diagnostic_panel_v0.outputs.v1",
@@ -140,7 +145,7 @@ def write_output(output_dir: Path, filename: str, payload: dict, *, manifest, sc
             "script_path": str(script_path.relative_to(script_path.resolve().parents[3])),
             "script_sha256": sha256_of_file(script_path),
             "manifest_sha256": manifest.manifest_sha256,
-            "d4_thresholds": D4_THRESHOLDS,
+            "thresholds": thresholds if thresholds is not None else D4_THRESHOLDS,
             "date_floor": FLOOR,
         },
         "payload": payload,

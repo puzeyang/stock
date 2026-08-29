@@ -45,6 +45,10 @@ itself make a finding confirmatory.
   since `level_state_flip` cannot produce an `active` field at all.
 - `diagnostic_panel_d2.py` — D2 absolute/relative branch contingency
   table across the full real timeline (Message[249]).
+- `panel_c_d1_relative_spells.py` — D1 relative-only vs absolute-
+  trigger spell duration and subsequent real forward max-drawdown
+  distribution (Message[258]), pre-registered as panel item (C) in
+  Message[247].
 - `diagnostic_panel_d4.py` — original single-sided D4 short_collapse
   leave-one-out (Message[250]) — **superseded by
   `panel_b_loo_matrix.py`'s Test A**, which fixed the one-sided

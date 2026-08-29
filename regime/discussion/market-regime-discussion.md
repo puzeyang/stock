@@ -2434,3 +2434,19 @@ Message[257] - CLAUDE - 2026-08-29T10:06:17-0400 - **Implemented Message[253]'s 
 **仍未做（如实标注，不是新一轮遗漏）**：Message[255]点2提到的一些细分分析（如按具体连续spell做new/dropped/split/merged逐个配对比较，目前只报告spell数量和列表，没有做spell级别的一一对应匹配）尚未实现；尚未对D4整体敏感度或任何阈值下结论——按之前商定的协议，这仍然是纯描述性panel输出，不是校准决定。
 
 请求复核：这次的实现是否已经充分解决Message[255]的五点问题；`_common.py`共享模块的设计本身（尤其`eligible50`/`eligible200`合并为同一个值这个真实数据特性，是否需要在未来数据变化时重新核实）是否合理。
+
+---
+
+Message[258] - CLAUDE - 2026-08-29T10:15:46-0400 - **[Out-of-turn, continuing pre-registered panel item (C) per Message[247]'s original list and the human's ongoing "continue without waiting" direction.] Panel C (D1 relative-only vs absolute-trigger spell duration + subsequent forward max-drawdown), full real timeline 2018-06-22 to present, persisted output. Headline: 28 real relative-only spells identified (vs 26 absolute-trigger), spanning 2018-2026 including several never previously examined in this investigation; relative-only spells are shorter (median 2 vs 3 sessions) but their single worst forward-drawdown outcome (28.32% over 20 sessions) exceeds the worst absolute-trigger outcome (12.16%) — driven by the real 2020-02-24/02-26 spell immediately preceding the COVID crash.**
+
+方法：`panel_c_d1_relative_spells.py`（新脚本，复用`_common.py`的`write_output`/`find_spells`），对2018-06-22至今全部2053个真实交易日，用真实VIX/VIX9D数据逐日重算D1的`level_stress`两条腿，分类为`absolute_trigger`（绝对腿为真，不论相对腿）、`relative_only`（仅相对腿为真）、`neither`。按分类聚合成真实连续session spell，对每个spell的最后一天，计算其后20/60个真实交易日内benchmark的真实最大回撤（peak-to-trough，从spell最后一天收盘价开始算起）。顺带修复了`_common.py`的`write_output()`一个小的命名问题——之前metadata字段硬编码为`d4_thresholds`，即使被D1 panel调用也会错误标注，现在改为通用的`thresholds`参数，由调用方显式传入对应domain的常量（向后兼容，D4脚本未受影响，已核实`_common.py`仍正常import）。
+
+发现（全部直接读值）：
+1. **Classification分布**：`absolute_trigger`=152天(7.40%)，`relative_only`=116天(5.65%)，`neither`=1785天(86.95%)。
+2. **Spell数量与持续时间**：`absolute_trigger`聚合成26段真实连续spell（持续时间中位数3个session，最长50个session）；`relative_only`聚合成28段（中位数2个session，最长14个session）——绝对阈值触发的spell系统性地比纯相对分位触发的spell持续更久，符合"绝对高位波动率通常伴随更持久的系统性压力"这个直觉，但本消息不据此下因果结论，只报告这个真实的持续时间差异。
+3. **后续最大回撤分布**：两组的中位数接近（20d窗口下`absolute_trigger`中位数3.73% vs `relative_only`中位数3.31%），但**最大值方向相反于直觉**——`relative_only`组的单一最差结果是28.32%（20d和60d窗口下相同，说明回撤全部发生在头20个session内），高于`absolute_trigger`组的最差结果12.16%。直接核实这个28.32%的来源：spell`2020-02-24`到`2020-02-26`（3个真实session），紧接着就是真实的2020年COVID崩盘——这不是异常值或计算错误，是这个投资已经反复确认过的真实历史事件，只是这次是第一次通过D1 relative-only这个角度、在完整时间轴扫描中被系统性地捕捉到，而不是像Message[241]那样只针对2025-04-04单点核查。
+4. **新增此前从未在本轮investigation中单独核查过的真实日期**：`relative_only`的28段spell里，除已知的2018 Q4/2020 COVID/2025-04之外，还包括2019-08-05/08-14、2022-09-23、2024-08-06/10-31/11-04/12-18、2025-02-27/03-03/03-28/04-17/04-23/05-23、2025-11-17/2026-03-03/03-05/03-18/03-31/04-06等此前从未逐日核查过的真实日期。
+
+范围声明：本消息**不**据此判断relative-only信号是否"更危险"或应该被赋予更高权重——单一极端值（2020-02-24事件）主导了这个比较的最大值统计，样本量小（26/28个spell），不做任何统计显著性或预测能力宣称；forward drawdown只是描述"这之后发生了什么"，不是"这预测了什么"，两者的因果/预测关系本消息完全不涉及。这仍然是纯描述性panel输出，不生成阈值候选，不打overall标签。
+
+验证：脚本独立运行两次（含`_common.py`小修复前后）产出完全一致的数字；输出已持久化到`outputs/panel_c_d1_relative_spells.json`，含标准metadata（含正确的D1专属thresholds，不再是误标的D4常量）；`_common.py`向后兼容性核实（D4脚本无需修改即可继续工作）；两个冻结产物哈希核对无变化；`git status`确认改动范围符合预期（`_common.py`小修复 + 新脚本，无`crisis.py`/`engine.py`改动）。
