@@ -15,16 +15,25 @@ distinguishable diagnostic states:
   - 0 domains active: `uncorroborated_veto=true`, `crisis_watch=false`;
   - 1 domain active:  `uncorroborated_veto=true`, `crisis_watch=true`.
 
-Exit (§9.3): requires ALL of (a) all hard vetoes clear, (b) fewer than two
-domains active, (c) Condition above the NEUTRAL-entry boundary plus buffer
-— for five CONSECUTIVE VALID bars. A renewed two-domain confirmation at any
-point resets the exit count to zero.
+Exit (§9.3, EXTENDED per Message[220]/[221]/[223]'s human-decided
+fail-closed fix — see `EXIT_BAR_REQUIRED_VALID_DOMAINS`): requires ALL of
+(a) all hard vetoes clear, (b) fewer than two domains active, (c) Condition
+above the NEUTRAL-entry boundary plus buffer, AND (d, added) all FOUR
+domains valid this bar — for five CONSECUTIVE bars all meeting every one of
+(a)-(d). A renewed two-domain confirmation at any point resets the exit
+count to zero. (d) exists because, without it, a domain going UNAVAILABLE
+is indistinguishable from that domain being observed CALM under (b) alone —
+both simply fail to add to `active_domain_count` — which would let an exit
+be confirmed on bars where CRISIS-relevant evidence was genuinely unknown,
+not genuinely absent. The human chose the most conservative option (ALL
+FOUR, not some lower minimum) when this gap was raised.
 
 Fail-closed (§4.1/§9.2's own "missing/stale is unavailable, never calm or
 stressed"): a domain with insufficient/stale/missing input is UNAVAILABLE
 (neither active nor inactive) — never silently counted as "0" (calm) in the
-valid-domain tally. §9.4: exchange halts are explicitly OUT_OF_SCOPE here —
-this module has no halt-detection logic and none should be added.
+valid-domain tally, on EITHER the entry OR (per the extension above) the
+exit side. §9.4: exchange halts are explicitly OUT_OF_SCOPE here — this
+module has no halt-detection logic and none should be added.
 
 Owned manifest fields (per `market_regime_v5.1_field_ownership.v1.0.json`,
 module 4.10 subset relevant to CRISIS): `crisis_domain_status`,
@@ -34,9 +43,14 @@ module 4.10 subset relevant to CRISIS): `crisis_domain_status`,
 **EMPIRICAL scope (§17.12):** the four CRISIS formulas and thresholds
 themselves are entirely EMPIRICAL — no domain's concrete valid/active
 formula is CLOSED anywhere in the design. Each domain is injected as a
-`CrisisDomainEvaluator` Protocol; this module owns only the CLOSED
-topology (independence, 2-of-4 entry, 5-bar corroborated-clear exit,
-uncorroborated-veto diagnostics), never a concrete domain formula.
+`CrisisDomainEvaluator` Protocol; this module owns the CLOSED topology
+(independence, 2-of-4 entry, 5-bar corroborated-clear exit,
+uncorroborated-veto diagnostics) plus the human-decided (not originally
+v5.1-CLOSED) `EXIT_BAR_REQUIRED_VALID_DOMAINS=4` exit-validity gate — never
+a concrete domain formula, which remains genuinely EMPIRICAL and injected
+by the caller (see `engine.py`'s real-but-simple D1-D4 reference
+implementations, explicitly NOT production defaults, per the same
+discipline as every other EMPIRICAL formula in this investigation).
 """
 from __future__ import annotations
 
@@ -45,6 +59,7 @@ from typing import Protocol
 
 EXIT_CONFIRMATION_BARS = 5  # CLOSED (§9.3): "five consecutive valid bars", not EMPIRICAL.
 ENTRY_DOMAIN_THRESHOLD = 2  # CLOSED (§9.2/C13): "2-of-4", not EMPIRICAL.
+EXIT_BAR_REQUIRED_VALID_DOMAINS = 4  # human-decided (Message[220]/[221]/[223], not an original v5.1 design-doc CLOSED value): each exit-confirmation bar must have ALL FOUR domains valid, not merely "fewer than two active" — closes the gap where an unavailable domain (e.g. D3's price_damage=None) is indistinguishable from an observed-calm domain under the entry-side ENTRY_DOMAIN_THRESHOLD check alone (design §9.2's "Missing/stale is unavailable, never calm or stressed" applied to exit, not just entry). Most conservative option of the ones discussed; the human explicitly chose it over a lower/data-driven threshold.
 
 
 @dataclass(frozen=True)
@@ -52,10 +67,49 @@ class CrisisDomainReading:
     """One domain's evaluation for one bar. `valid=False` means the domain
     is genuinely unavailable this bar (missing/stale/insufficiently warmed
     input) — `active` is meaningless and MUST be ignored by callers when
-    `valid` is False (never treated as calm-by-omission)."""
+    `valid` is False (never treated as calm-by-omission).
+
+    `reason_codes` (added per Message[220]/[221]'s discussion-log review,
+    closing a real gap against design §9.2's "Publish per-domain
+    valid/active flags, coverage, count, reason codes, and entry/exit
+    counters" — the field did not exist before): a tuple of stable string
+    identifiers explaining WHY a domain is unavailable or WHICH raw
+    sub-condition made it active, e.g. `("canonical_price_damage_
+    unavailable",)` for D3 when Stability's `price_damage` is None, or
+    `("extreme",)` / `("level_stress", "curve_stress")` for a real active
+    domain — never free text, always a stable machine-checkable code.
+    Defaults to `()` (empty) for backward compatibility with every
+    existing caller that predates this field; an empty tuple is valid
+    (e.g. a domain that is simply calm/inactive has nothing to explain)."""
 
     valid: bool
     active: bool
+    reason_codes: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class CrisisEvaluationContext:
+    """Shared, immutable per-bar context passed UNIFORMLY to all four
+    domain evaluators (added per Message[218]/[219]'s discussion-log
+    review). Replaces the bare `as_of: str` `CrisisDomainEvaluator`
+    previously received — needed because `evaluate_crisis_bar` calls
+    every domain identically in one loop (`evaluator(context)`), so no
+    single domain can receive a parameter the others don't; domains that
+    don't need `price_damage` (D1/D2/D4) simply ignore it.
+
+    `price_damage` carries the SAME canonical value `compute_stability`
+    already computed this invocation (`StabilityResult.price_damage`) —
+    per that function's own explicit MUST ("callers needing price_damage
+    elsewhere (CRISIS, diagnostics) MUST reuse this same returned
+    price_damage value, never call the estimator again independently"),
+    the price-damage domain evaluator (D3) MUST read this field, never
+    recompute its own drawdown/return-shock measures. `None` if Stability
+    (and therefore the canonical price_damage) was itself unavailable
+    this bar — D3 must then return `valid=False` with a
+    `canonical_price_damage_unavailable` reason code, per Message[221]."""
+
+    as_of: str
+    price_damage: float | None
 
 
 class CrisisDomainEvaluator(Protocol):
@@ -67,7 +121,7 @@ class CrisisDomainEvaluator(Protocol):
     instance — independence (C13) is enforced by construction here: no
     evaluator receives another domain's reading as an input."""
 
-    def __call__(self, as_of: str) -> CrisisDomainReading:
+    def __call__(self, context: CrisisEvaluationContext) -> CrisisDomainReading:
         ...
 
 
@@ -103,19 +157,34 @@ class CrisisBarEvaluation:
     active_domain_count: int
 
 
-def evaluate_crisis_bar(as_of: str, config: CrisisDomainConfig) -> CrisisBarEvaluation:
+def evaluate_crisis_bar(as_of: str, config: CrisisDomainConfig, price_damage: float | None = None) -> CrisisBarEvaluation:
     """Evaluate all four CRISIS domains for one bar. `valid_domain_count`
     counts domains where `valid=True` (regardless of active/inactive);
     `active_domain_count` counts domains where BOTH `valid=True` AND
     `active=True` — an invalid domain never contributes to either an
     active or an inactive tally, per §9.2's "missing/stale is unavailable,
     never calm or stressed."
+
+    `price_damage` (added per Message[218]/[219]/[221]) is the SAME
+    canonical value the caller's own `compute_stability` invocation
+    already computed this bar (`StabilityResult.price_damage`, or `None`
+    if Stability was itself unavailable) — passed through unchanged into
+    a shared `CrisisEvaluationContext` given identically to all four
+    domain evaluators, per `CrisisEvaluationContext`'s own docstring. D1/
+    D2/D4 are free to ignore it; only D3 (price damage) is expected to
+    read it. Defaults to `None` for backward compatibility with any
+    caller not yet passing a real value (e.g. synthetic-fixture tests
+    exercising D1/D2/D4 only) — a `None` here simply means D3 (if
+    present in `config`) will see `context.price_damage is None` and
+    must handle that as its own unavailability case, exactly as it would
+    for a real missing value.
     """
+    context = CrisisEvaluationContext(as_of=as_of, price_damage=price_damage)
     status: dict[str, CrisisDomainReading] = {}
     valid_count = 0
     active_count = 0
     for name, evaluator in config.domains().items():
-        reading = evaluator(as_of)
+        reading = evaluator(context)
         status[name] = reading
         if reading.valid:
             valid_count += 1
@@ -176,11 +245,25 @@ class CrisisState:
         make that implication a verified invariant rather than an
         unstated assumption a future domain-count change could break.
 
-        Exit (§9.3): while in CRISIS, exits only after
+        Exit (§9.3, extended per Message[220]/[221]/[223]'s human-decided
+        fail-closed fix): while in CRISIS, exits only after
         EXIT_CONFIRMATION_BARS (5) CONSECUTIVE bars all simultaneously
         satisfying (a) no hard veto active, (b) `active_domain_count < 2`,
-        and (c) `condition_score` is not None and exceeds
-        `neutral_entry_boundary_plus_buffer`. A renewed 2-domain
+        (c) `condition_score` is not None and exceeds
+        `neutral_entry_boundary_plus_buffer`, AND (d, added) ALL FOUR
+        domains are `valid` this bar (`valid_domain_count ==
+        EXIT_BAR_REQUIRED_VALID_DOMAINS`). (d) closes a real gap §9.3's
+        original text left open: without it, a domain going unavailable
+        (e.g. D3's canonical price_damage becoming None) is
+        indistinguishable from that same domain being observed calm —
+        both simply fail to increment `active_domain_count` — so an
+        exit could be confirmed on bars where the CRISIS-relevant
+        evidence was genuinely unknown, not genuinely absent. This is
+        the SAME §9.2 principle ("Missing/stale is unavailable, never
+        calm or stressed") already enforced on the entry side, extended
+        to the exit side, per the human's explicit conservative choice
+        (require ALL four domains valid, not merely some minimum count)
+        rather than an unvalidated lower threshold. A renewed 2-domain
         confirmation at ANY point while counting resets crisis_exit_count
         to 0 (§9.3's own "renewed two-domain confirmation resets the
         count") — checked before the ordinary per-bar exit-condition
@@ -203,6 +286,7 @@ class CrisisState:
             and bar.active_domain_count < ENTRY_DOMAIN_THRESHOLD
             and exit_ctx.condition_score is not None
             and exit_ctx.condition_score > exit_ctx.neutral_entry_boundary_plus_buffer
+            and bar.valid_domain_count == EXIT_BAR_REQUIRED_VALID_DOMAINS
         )
 
         if exit_condition_met:
@@ -215,6 +299,10 @@ class CrisisState:
             # 2-domain re-entry, already handled above) resets the count —
             # §9.3 requires FIVE CONSECUTIVE valid bars, not five bars
             # total, so a single failing bar restarts the count from zero.
+            # This includes a bar where fewer than all four domains are
+            # valid (the new (d) condition above) — an "unknown" bar
+            # can never count toward exit confirmation, it can only ever
+            # reset the counter, same as any other failing bar.
             self.crisis_exit_count = 0
 
         return self

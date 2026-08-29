@@ -25,6 +25,7 @@ sys.path.insert(0, str(REPO_ROOT / "regime/src"))
 from v5_1.contracts import load_manifest  # noqa: E402
 from v5_1.output_assembly import validate_output  # noqa: E402
 from v5_1.raw_features import load_raw_series  # noqa: E402
+from dataclasses import replace  # noqa: E402
 from v5_1.engine import (  # noqa: E402
     load_raw_series_bundle,
     new_running_engine_state,
@@ -38,6 +39,10 @@ from v5_1.engine import (  # noqa: E402
     _realized_vol_estimator,
     _drawdown_price_damage_estimator,
     _impulse_horizon,
+    _d1_volatility_term_structure_evaluator,
+    _d2_credit_stress_evaluator,
+    _d3_price_damage_evaluator,
+    _d4_participation_collapse_evaluator,
 )
 
 
@@ -125,6 +130,126 @@ class TestCrisisStubNeverActive:
         for d in dates:
             record = run_engine_for_date(d, raw_bundle, state, manifest)
             assert record["state"] != "CRISIS", f"{d}: unexpectedly reported CRISIS from an 'always inactive' stub"
+
+
+# ---------------------------------------------------------------------------
+# Real CRISIS domain evaluators (Message[211]-[223]'s reviewed proposal),
+# opt-in via TestScaffoldingConfig.use_real_crisis_domains. Explicitly NOT
+# production defaults — see engine.py's own module comments on D1-D4.
+# These tests verify the WIRING is real and correct against real pinned
+# data, matching the standard this whole investigation has held every
+# other EMPIRICAL formula to (spot-checked against real historical dates,
+# not just "doesn't crash").
+# ---------------------------------------------------------------------------
+
+class TestRealCrisisDomains:
+    def _real_crisis_config(self):
+        return replace(TEST_SCAFFOLDING_CONFIG, use_real_crisis_domains=True)
+
+    def test_default_config_still_uses_the_stub_unchanged(self, manifest, raw_bundle):
+        """Backward-compatibility check: TEST_SCAFFOLDING_CONFIG's default
+        (use_real_crisis_domains=False) must produce byte-identical
+        behavior to before this message — CRISIS structurally never
+        fires, same as TestCrisisStubNeverActive already verifies more
+        broadly."""
+        state = new_running_engine_state()
+        record = run_engine_for_date("2018-12-24", raw_bundle, state, manifest)
+        assert record["state"] != "CRISIS"
+
+    def test_real_crisis_fires_on_the_2018_christmas_eve_massacre(self, manifest, raw_bundle):
+        """The core positive regression test: real CRISIS entry on a real,
+        well-documented historical stress episode, verified against real
+        pinned VIX/VIX9D/OAS/SPY/Breadth data — the first time in this
+        engine's existence CRISIS can produce a real result at all."""
+        config = self._real_crisis_config()
+        state = new_running_engine_state(config)
+        dates = ["2018-12-20", "2018-12-21", "2018-12-24", "2018-12-26", "2018-12-27"]
+        for d in dates:
+            record = run_engine_for_date(d, raw_bundle, state, config=config, manifest=manifest)
+            assert record["state"] == "CRISIS", f"{d}: expected CRISIS during the real Christmas Eve Massacre"
+            assert record["crisis_valid_domain_count"] == 4
+            assert record["crisis_active_domain_count"] >= 2
+
+    def test_real_crisis_does_not_fire_during_a_real_calm_period(self, manifest, raw_bundle):
+        """The core negative/false-positive regression test — a real,
+        genuinely calm bull-market stretch (mid-2021) must never trip
+        CRISIS. Complements the positive test above; a formula that fires
+        everywhere is as broken as one that never fires."""
+        config = self._real_crisis_config()
+        state = new_running_engine_state(config)
+        dates = [o.date for o in raw_bundle.benchmark.observations if "2021-06-01" <= o.date <= "2021-08-31"]
+        for d in dates:
+            record = run_engine_for_date(d, raw_bundle, state, config=config, manifest=manifest)
+            assert record["state"] != "CRISIS", f"{d}: unexpected CRISIS during a real calm period"
+
+    def test_real_crisis_exits_after_a_real_recovery(self, manifest, raw_bundle):
+        """Confirms the human-decided 4/4-valid exit gate (Message[220]/
+        [221]/[223]) doesn't get CRISIS permanently stuck once real data
+        genuinely stays available and recovers — the 2018 episode's real
+        exit around 2019-01-14, verified directly against real dates."""
+        config = self._real_crisis_config()
+        state = new_running_engine_state(config)
+        dates = [o.date for o in raw_bundle.benchmark.observations if "2018-12-07" <= o.date <= "2019-01-20"]
+        states_seen = []
+        for d in dates:
+            record = run_engine_for_date(d, raw_bundle, state, config=config, manifest=manifest)
+            states_seen.append(record["state"])
+        assert "CRISIS" in states_seen, "must have entered CRISIS at some point in this real window"
+        assert states_seen[-1] != "CRISIS", "must have exited CRISIS by the end of this real recovery window"
+
+    def test_crisis_domain_status_output_has_all_four_named_domains_with_real_reason_codes(self, manifest, raw_bundle):
+        config = self._real_crisis_config()
+        state = new_running_engine_state(config)
+        record = run_engine_for_date("2018-12-24", raw_bundle, state, config=config, manifest=manifest)
+        status = record["crisis_domain_status"]
+        assert set(status.keys()) == {
+            "volatility_term_structure", "credit_stress", "price_damage", "participation_collapse",
+        }
+        for name, reading in status.items():
+            assert reading.valid is True, f"{name}: expected valid on a real, well-covered historical date"
+            # On the real Christmas Eve Massacre peak, every domain should
+            # have at least one real reason code explaining its reading.
+            assert len(reading.reason_codes) >= 1, f"{name}: expected at least one reason code on a real active domain"
+
+    def test_d2_credit_stress_correctly_distinguishes_2022_from_2020(self, manifest, raw_bundle):
+        """Real, non-obvious finding verified during implementation
+        (spot-checked manually before writing this test): 2022's equity
+        selloff was NOT primarily a credit crisis (real OAS stayed
+        4.6-5.4pp throughout, well under the 6.00pp threshold) unlike
+        2020's genuine credit-spread blowout (real OAS reached 10.87pp).
+        D2 must correctly read these as different, not treat "SPY fell a
+        lot" as sufficient for credit stress."""
+        d2 = _d2_credit_stress_evaluator(raw_bundle.oas)
+        from v5_1.crisis import CrisisEvaluationContext
+        reading_2020 = d2(CrisisEvaluationContext(as_of="2020-03-23", price_damage=None))
+        reading_2022 = d2(CrisisEvaluationContext(as_of="2022-06-13", price_damage=None))
+        assert reading_2020.valid is True
+        assert reading_2020.active is True, "2020-03-23: real OAS=10.87pp must trigger credit stress"
+        assert reading_2022.valid is True
+        assert reading_2022.active is False, "2022-06-13: real OAS~4.87pp must NOT trigger credit stress"
+
+    def test_d3_reuses_canonical_price_damage_never_recomputes(self, manifest, raw_bundle):
+        """Direct regression test for the retracted Message[213] error
+        (corrected in Message[215]/[216]): D3 must read
+        context.price_damage as given, never call
+        _drawdown_price_damage_estimator itself."""
+        d3 = _d3_price_damage_evaluator()
+        from v5_1.crisis import CrisisEvaluationContext
+        # A deliberately fake, out-of-real-range value the real estimator
+        # would never itself produce for this date — if D3 were silently
+        # recomputing its own drawdown instead of trusting the context,
+        # this exact injected value wouldn't drive the result.
+        reading = d3(CrisisEvaluationContext(as_of="2018-12-24", price_damage=0.99))
+        assert reading.valid is True
+        assert reading.active is True
+        assert "extreme" in reading.reason_codes
+
+    def test_d3_unavailable_when_canonical_price_damage_is_none(self, manifest, raw_bundle):
+        d3 = _d3_price_damage_evaluator()
+        from v5_1.crisis import CrisisEvaluationContext
+        reading = d3(CrisisEvaluationContext(as_of="2018-12-24", price_damage=None))
+        assert reading.valid is False
+        assert reading.reason_codes == ("canonical_price_damage_unavailable",)
 
 
 # ---------------------------------------------------------------------------

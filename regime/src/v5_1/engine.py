@@ -108,7 +108,7 @@ from .direction import (
     DirectionConfirmationState, classify_structure, compute_direction_result, DirectionResult,
 )
 from .trend_quality import TrendQualityWeights, TrendQualityResult, TrendQualityUnavailableError, compute_trend_quality
-from .breadth import BreadthBlendConfig, BreadthResult, BreadthUnavailableError, compute_breadth
+from .breadth import BreadthBlendConfig, BreadthResult, BreadthUnavailableError, compute_breadth, compute_participation
 from .risk_appetite import RiskAppetiteWeights, RiskAppetiteResult, RiskAppetiteUnavailableError, compute_risk_appetite
 from .stability import StabilityWeights, StabilityResult, StabilityUnavailableError, compute_stability
 from .condition import (
@@ -118,7 +118,10 @@ from .impulse import (
     ImpulseEndpoint, ImpulseHorizonInputs, ImpulseWeights, ImpulseResult, ImpulseUnavailableError, compute_impulse,
 )
 from .confidence import ConfidenceResult, compute_confidence
-from .crisis import CrisisDomainReading, CrisisDomainConfig, CrisisBarEvaluation, CrisisState, ConditionForExit, evaluate_crisis_bar
+from .crisis import (
+    CrisisDomainReading, CrisisDomainConfig, CrisisBarEvaluation, CrisisEvaluationContext, CrisisState,
+    ConditionForExit, evaluate_crisis_bar, compute_uncorroborated_veto_diagnostics,
+)
 from .ordinary_state import StateBoundaries, ConfirmationBars, OrdinaryHysteresisState
 from .trending import TrendingQualificationInputs, TrendingConfig, TrendingState
 from .state_machine import EngineState, StateResult, advance_state
@@ -329,10 +332,271 @@ def _stub_crisis_domain_never_active(presence_series: RawSeries):
     found via a real-data smoke test, not a unit test, since the
     synthetic fixtures elsewhere in this engine don't exercise this
     specific orchestrator wiring)."""
-    def _ev(as_of: str) -> CrisisDomainReading:
-        v = presence_series.value_on(as_of)
+    def _ev(context: CrisisEvaluationContext) -> CrisisDomainReading:
+        v = presence_series.value_on(context.as_of)
         return CrisisDomainReading(valid=v is not None, active=False)
     return _ev
+
+
+# ---------------------------------------------------------------------------
+# REAL (if simple, uncalibrated) CRISIS domain evaluators (D1-D4), per the
+# discussion log's extensively-reviewed proposal (Messages[211]-[223]):
+# ChatGPT's original concrete formulas (Message[211]), Claude's independent
+# review that found and fixed a real OAS unit bug (Message[212]/[213]), a
+# real D3 canonical-price_damage-reuse fix (Message[213]/[215]/[216]), and
+# the CrisisEvaluationContext/reason_codes/4-of-4-exit-gate topology
+# extensions to crisis.py itself (Message[217]-[223]). Explicitly NOT
+# production defaults — every threshold below is a human-decided baseline
+# preset from that review thread, not a calibrated, backtested constant,
+# same discipline as every other EMPIRICAL formula in this file. Unlike
+# Direction/Breadth's window-length EMPIRICAL parameters (which had real
+# historical price data to check against), these four formulas have NO
+# cited design-doc reference value (confirmed in Message[212]) — the
+# thresholds are a preregistered research baseline per Message[211] §九,
+# not a claimed-correct production configuration.
+# ---------------------------------------------------------------------------
+
+# D1: volatility/term-structure stress — VIX level, VIX9D/VIX curve, and a
+# 5-session VIX jump, each independently checked; "extreme" is a single-
+# evidence shortcut so a genuinely extreme print doesn't wait on a second,
+# slower-moving confirmation. Baseline preset per Message[211] §三.
+_D1_VIX_LEVEL_THRESHOLD = 30.0
+_D1_VIX_PCT504_THRESHOLD = 90.0
+_D1_CURVE_RATIO_THRESHOLD = 1.05
+_D1_JUMP_5D_THRESHOLD = 0.50
+_D1_EXTREME_VIX = 40.0
+_D1_EXTREME_RATIO = 1.15
+
+
+def _d1_volatility_term_structure_evaluator(vix_series: RawSeries, vix9d_series: RawSeries):
+    """D1 per Message[211] §三 (baseline preset), verified against real
+    pinned VIX/VIX9D data at 4 known crisis dates in Message[212] (e.g.
+    2020-03-16: VIX=82.69/VIX9D=109.46/ratio=1.324 — triggers extreme on
+    both sub-conditions independently)."""
+    def _ev(context: CrisisEvaluationContext) -> CrisisDomainReading:
+        vix = vix_series.value_on(context.as_of)
+        vix9d = vix9d_series.value_on(context.as_of)
+        if vix is None or vix9d is None or vix == 0:
+            return CrisisDomainReading(valid=False, active=False, reason_codes=("vix_or_vix9d_unavailable",))
+
+        vix_window_obs = vix_series.window_ending(context.as_of, REQUIRED_WINDOW_SIZE)
+        vix_5d_obs = vix_series.window_ending(context.as_of, 6)
+        if vix_window_obs is None or vix_5d_obs is None:
+            return CrisisDomainReading(valid=False, active=False, reason_codes=("insufficient_vix_history",))
+
+        try:
+            vix_pct504 = causal_midrank([o.value for o in vix_window_obs], vix)
+        except InsufficientHistoryError:
+            return CrisisDomainReading(valid=False, active=False, reason_codes=("insufficient_vix_history",))
+
+        ratio = vix9d / vix
+        jump_5d = vix / vix_5d_obs[0].value - 1.0 if vix_5d_obs[0].value != 0 else 0.0
+
+        reasons = []
+        level_stress = vix >= _D1_VIX_LEVEL_THRESHOLD or vix_pct504 >= _D1_VIX_PCT504_THRESHOLD
+        curve_stress = ratio >= _D1_CURVE_RATIO_THRESHOLD
+        jump_stress = jump_5d >= _D1_JUMP_5D_THRESHOLD
+        extreme = vix >= _D1_EXTREME_VIX or ratio >= _D1_EXTREME_RATIO
+
+        if level_stress:
+            reasons.append("level_stress")
+        if curve_stress:
+            reasons.append("curve_stress")
+        if jump_stress:
+            reasons.append("jump_stress")
+        if extreme:
+            reasons.append("extreme")
+
+        active = extreme or sum([level_stress, curve_stress, jump_stress]) >= 2
+        return CrisisDomainReading(valid=True, active=active, reason_codes=tuple(reasons))
+    return _ev
+
+
+# D2: credit stress — real pinned OAS data is in PERCENTAGE POINTS (FRED
+# BAMLH0A0HYM2 standard unit, e.g. 10.87 at the 2020 COVID peak), NOT basis
+# points. Message[211]'s original "600 bp" thresholds are here expressed
+# directly in percentage points (600bp = 6.00pp) per Message[212]'s found
+# unit bug and Message[213]'s adopted fix — comparisons are against the
+# SAME unit the pinned series is actually in, no runtime unit conversion.
+_D2_OAS_LEVEL_PP_THRESHOLD = 6.00
+_D2_OAS_LEVEL_PCT504_THRESHOLD = 90.0
+_D2_OAS_WIDEN_20D_PP_THRESHOLD = 1.00
+_D2_OAS_WIDEN_PCT504_THRESHOLD = 90.0
+_D2_EXTREME_OAS_LEVEL_PP = 8.00
+_D2_EXTREME_OAS_WIDEN_20D_PP = 2.00
+_D2_CHANGE_HORIZON_SESSIONS = 20
+
+
+def _d2_credit_stress_evaluator(oas_series: RawSeries):
+    """D2 per Message[211] §四, unit-corrected per Message[212]/[213]
+    (percentage points, matching the real pinned BAMLH0A0HYM2 series —
+    NOT basis points as originally drafted). Verified against real OAS
+    data at 4 known crisis dates: 2020-03-23 OAS=10.87pp, comfortably
+    above both the level and extreme thresholds. `oas_change_20d_pct504`
+    needs REQUIRED_WINDOW_SIZE + 20 = 524 raw observations (not 504) to
+    produce 504 valid 20-session-change values — the warm-up requirement
+    identified in Message[220]/[213]'s review, not merely assumed."""
+    def _ev(context: CrisisEvaluationContext) -> CrisisDomainReading:
+        current_level = oas_series.value_on(context.as_of)
+        if current_level is None:
+            return CrisisDomainReading(valid=False, active=False, reason_codes=("oas_unavailable",))
+
+        level_window_obs = oas_series.window_ending(context.as_of, REQUIRED_WINDOW_SIZE)
+        change_domain_obs = oas_series.window_ending(context.as_of, REQUIRED_WINDOW_SIZE + _D2_CHANGE_HORIZON_SESSIONS)
+        if level_window_obs is None or change_domain_obs is None:
+            return CrisisDomainReading(valid=False, active=False, reason_codes=("insufficient_oas_history",))
+
+        try:
+            oas_level_pct504 = causal_midrank([o.value for o in level_window_obs], current_level)
+        except InsufficientHistoryError:
+            return CrisisDomainReading(valid=False, active=False, reason_codes=("insufficient_oas_history",))
+
+        change_values = [
+            change_domain_obs[i].value - change_domain_obs[i - _D2_CHANGE_HORIZON_SESSIONS].value
+            for i in range(_D2_CHANGE_HORIZON_SESSIONS, len(change_domain_obs))
+        ]
+        current_change_20d = change_values[-1]
+        try:
+            oas_change_pct504 = causal_midrank(change_values, current_change_20d)
+        except InsufficientHistoryError:
+            return CrisisDomainReading(valid=False, active=False, reason_codes=("insufficient_oas_history",))
+
+        reasons = []
+        level_stress = current_level >= _D2_OAS_LEVEL_PP_THRESHOLD or oas_level_pct504 >= _D2_OAS_LEVEL_PCT504_THRESHOLD
+        widen_stress = current_change_20d >= _D2_OAS_WIDEN_20D_PP_THRESHOLD and oas_change_pct504 >= _D2_OAS_WIDEN_PCT504_THRESHOLD
+        extreme = current_level >= _D2_EXTREME_OAS_LEVEL_PP or current_change_20d >= _D2_EXTREME_OAS_WIDEN_20D_PP
+
+        if level_stress:
+            reasons.append("level_stress")
+        if widen_stress:
+            reasons.append("widen_stress")
+        if extreme:
+            reasons.append("extreme")
+
+        active = extreme or (level_stress and widen_stress)
+        return CrisisDomainReading(valid=True, active=active, reason_codes=tuple(reasons))
+    return _ev
+
+
+# D3: price damage — MUST reuse the SAME canonical `price_damage` value
+# Stability already computed this invocation, per `compute_stability`'s
+# own explicit MUST ("never call the estimator again independently") and
+# `CrisisEvaluationContext`'s docstring. This evaluator does NOT recompute
+# drawdown itself — the corrected design after Message[213]'s retracted
+# "call the estimator directly" error and Message[216]'s follow-up fix.
+# Only the `dd_stress`/`extreme`-via-drawdown half of Message[211]'s
+# original D3 design is implementable against the CURRENT canonical
+# `price_damage` interface (a single [0,1] drawdown-magnitude scalar, no
+# return_5d/return_20d fields per Message[215]'s verification) — the
+# `shock_stress`/return-based half of Message[211]'s design is NOT
+# implemented here, since it would require extending the canonical
+# price_damage contract itself first (out of scope for this message; the
+# 5-day/20-day return-shock sub-conditions are simply omitted, not
+# silently approximated).
+_D3_DRAWDOWN_STRESS_THRESHOLD = 0.12
+_D3_EXTREME_DRAWDOWN = 0.20
+
+
+def _d3_price_damage_evaluator():
+    """D3: reads `context.price_damage` (the canonical value, already
+    computed once by `compute_stability` this invocation) — never its own
+    independent drawdown calculation. `price_damage` is already a [0,1]
+    adverse-positive scalar (higher = more damage) per its own contract,
+    so no further transform is needed here, only threshold comparison."""
+    def _ev(context: CrisisEvaluationContext) -> CrisisDomainReading:
+        if context.price_damage is None:
+            return CrisisDomainReading(valid=False, active=False, reason_codes=("canonical_price_damage_unavailable",))
+
+        dd_stress = context.price_damage >= _D3_DRAWDOWN_STRESS_THRESHOLD
+        extreme = context.price_damage >= _D3_EXTREME_DRAWDOWN
+        reasons = []
+        if dd_stress:
+            reasons.append("dd_stress")
+        if extreme:
+            reasons.append("extreme")
+        return CrisisDomainReading(valid=True, active=dd_stress, reason_codes=tuple(reasons))
+    return _ev
+
+
+# D4: participation collapse — Tier 2 fixed 9-sector-ETF universe, reusing
+# `breadth.py`'s own `compute_participation` (the same real accessor
+# Breadth's own pillar uses) rather than a private re-derivation. Baseline
+# preset per Message[211] §六, verified against real Breadth data at 4
+# known crisis dates in Message[212] (e.g. 2020-03-23:
+# pct_above_50=pct_above_200=0.0, far below both thresholds).
+_D4_SHORT_COLLAPSE_THRESHOLD = 0.25
+_D4_LONG_COLLAPSE_THRESHOLD = 0.35
+_D4_EXTREME_SHORT = 0.10
+_D4_EXTREME_LONG = 0.20
+_D4_SMA50_WINDOW = 50
+_D4_SMA200_WINDOW = 200
+_D4_SPEED_LOOKBACK_SESSIONS = 5
+_D4_SPEED_DROP_PP_THRESHOLD = 0.25
+_D4_MIN_COVERAGE = 0.90
+
+
+def _d4_participation_collapse_evaluator(breadth_collection: RawSeriesCollection):
+    """D4 per Message[211] §六, real windows (50/200 sessions, matching
+    the field names' own literal meaning, not the 5/10 fixture shortcut
+    already established as test-convenience-only elsewhere in this
+    investigation — Messages[191]/[197])."""
+    def _ev(context: CrisisEvaluationContext) -> CrisisDomainReading:
+        try:
+            pct50_now, pct200_now, eligible_now, total_now = compute_participation(
+                breadth_collection, context.as_of, _D4_SMA50_WINDOW, _D4_SMA200_WINDOW,
+            )
+        except BreadthUnavailableError:
+            return CrisisDomainReading(valid=False, active=False, reason_codes=("participation_unavailable",))
+
+        if total_now == 0 or eligible_now / total_now < _D4_MIN_COVERAGE:
+            return CrisisDomainReading(valid=False, active=False, reason_codes=("insufficient_coverage",))
+
+        speed_collapse = False
+        try:
+            past_dates = _breadth_dates_ending(breadth_collection, context.as_of, _D4_SPEED_LOOKBACK_SESSIONS + 1)
+            if past_dates is not None:
+                past_as_of = past_dates[0]
+                pct50_past, _pct200_past, eligible_past, total_past = compute_participation(
+                    breadth_collection, past_as_of, _D4_SMA50_WINDOW, _D4_SMA200_WINDOW,
+                )
+                if total_past > 0 and eligible_past / total_past >= _D4_MIN_COVERAGE:
+                    speed_collapse = (pct50_past - pct50_now) >= _D4_SPEED_DROP_PP_THRESHOLD
+        except BreadthUnavailableError:
+            speed_collapse = False
+
+        short_collapse = pct50_now <= _D4_SHORT_COLLAPSE_THRESHOLD
+        long_collapse = pct200_now <= _D4_LONG_COLLAPSE_THRESHOLD
+        extreme = pct50_now <= _D4_EXTREME_SHORT and pct200_now <= _D4_EXTREME_LONG
+
+        reasons = []
+        if short_collapse:
+            reasons.append("short_collapse")
+        if long_collapse:
+            reasons.append("long_collapse")
+        if speed_collapse:
+            reasons.append("speed_collapse")
+        if extreme:
+            reasons.append("extreme")
+
+        active = extreme or sum([short_collapse, long_collapse, speed_collapse]) >= 2
+        return CrisisDomainReading(valid=True, active=active, reason_codes=tuple(reasons))
+    return _ev
+
+
+def _breadth_dates_ending(collection: RawSeriesCollection, as_of: str, size: int) -> tuple[str, ...] | None:
+    """Helper: the `size` most recent real trading dates on/before `as_of`
+    shared by the Breadth collection's own member series, reusing whatever
+    date set `compute_participation` itself would consider — implemented
+    via the first member's own `window_ending`, matching the assumption
+    every Tier 2 member shares the same real trading-day calendar (already
+    an implicit assumption throughout `breadth.py`, not a new one)."""
+    members = list(collection.members.values())
+    if not members:
+        return None
+    window = members[0].window_ending(as_of, size)
+    if window is None:
+        return None
+    return tuple(o.date for o in window)
 
 
 @dataclass(frozen=True)
@@ -377,6 +641,18 @@ class TestScaffoldingConfig:
     impulse_fast_horizon_sessions: int = 5
     impulse_slow_horizon_sessions: int = 10
     impulse_weights: ImpulseWeights = ImpulseWeights(weight_fast=0.6, weight_slow=0.4)
+    use_real_crisis_domains: bool = False
+    """Per Message[211]-[223]'s extensively-reviewed CRISIS domain
+    proposal: when False (the default, preserving every prior config's
+    exact existing behavior), CRISIS uses the original
+    `_stub_crisis_domain_never_active` stub — structurally always-calm,
+    CRISIS can never fire, same as before this message. When True, uses
+    the real (if uncalibrated, human-reviewed) D1-D4 evaluators
+    (`_d1_volatility_term_structure_evaluator` etc.) instead. NOT a
+    production default either way — this flag exists so the real
+    evaluators are opt-in, isolating their effect for comparison against
+    the stub, same `dataclasses.replace()`-based isolation discipline as
+    every other EMPIRICAL parameter tested in this investigation."""
 
 
 TEST_SCAFFOLDING_CONFIG = TestScaffoldingConfig()
@@ -736,12 +1012,24 @@ def run_engine_for_date(
     any_hard_veto_active = bool(condition_result and condition_result.active_veto_ids)
 
     # --- State Machine (4.10) ---
-    crisis_bar = evaluate_crisis_bar(as_of, CrisisDomainConfig(
-        volatility_term_structure=_stub_crisis_domain_never_active(raw.vix),
-        credit_stress=_stub_crisis_domain_never_active(raw.oas),
-        price_damage=_stub_crisis_domain_never_active(raw.benchmark),
-        participation_collapse=_stub_crisis_domain_never_active(raw.benchmark),
-    ))
+    if config.use_real_crisis_domains:
+        crisis_domain_config = CrisisDomainConfig(
+            volatility_term_structure=_d1_volatility_term_structure_evaluator(raw.vix, raw.vix9d),
+            credit_stress=_d2_credit_stress_evaluator(raw.oas),
+            price_damage=_d3_price_damage_evaluator(),
+            participation_collapse=_d4_participation_collapse_evaluator(raw.breadth),
+        )
+    else:
+        crisis_domain_config = CrisisDomainConfig(
+            volatility_term_structure=_stub_crisis_domain_never_active(raw.vix),
+            credit_stress=_stub_crisis_domain_never_active(raw.oas),
+            price_damage=_stub_crisis_domain_never_active(raw.benchmark),
+            participation_collapse=_stub_crisis_domain_never_active(raw.benchmark),
+        )
+    crisis_bar = evaluate_crisis_bar(
+        as_of, crisis_domain_config,
+        price_damage=stability_result.price_damage if stability_result is not None else None,
+    )
     exit_ctx = ConditionForExit(
         condition_score=condition_result.condition_score if condition_result is not None else None,
         any_hard_veto_active=any_hard_veto_active,
@@ -776,6 +1064,17 @@ def run_engine_for_date(
         as_of, _stub_pillar_agreement, _stub_data_completeness, _stub_decision_margin, _stub_temporal_stability,
     )
 
+    # CRISIS diagnostics per §9.2's own "Publish per-domain valid/active
+    # flags, coverage, count, reason codes, and entry/exit counters" —
+    # previously never wired to assemble_output at all (crisis_bar was
+    # computed only to feed advance_state), a gap that didn't matter while
+    # CRISIS was structurally always-calm but does now that it can fire
+    # for real. `uncorroborated_veto`/`crisis_watch` are a pure function
+    # of THIS bar's active_domain_count, not persisted state (see that
+    # function's own docstring) — computed fresh each call, same as
+    # crisis_bar itself.
+    veto_diagnostics = compute_uncorroborated_veto_diagnostics(crisis_bar.active_domain_count, any_hard_veto_active)
+
     # --- Output Assembly (4.12) ---
     return assemble_output(
         as_of, manifest.raw["schema_version"], manifest.raw["feature_contract_version"],
@@ -783,6 +1082,12 @@ def run_engine_for_date(
         direction=direction_result, trend_quality=trend_quality_result, breadth=breadth_result,
         risk_appetite=risk_appetite_result, stability=stability_result, condition=condition_result,
         impulse=impulse_result, confidence=confidence_result, state=state_result,
+        crisis_domain_status=crisis_bar.domain_status,
+        crisis_valid_domain_count=crisis_bar.valid_domain_count,
+        crisis_active_domain_count=crisis_bar.active_domain_count,
+        crisis_watch=veto_diagnostics.crisis_watch,
+        uncorroborated_veto=veto_diagnostics.uncorroborated_veto,
+        crisis_exit_count=running_state.state_machine.crisis.crisis_exit_count,
     )
 
 

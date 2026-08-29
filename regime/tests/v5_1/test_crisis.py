@@ -19,18 +19,20 @@ from v5_1.crisis import (  # noqa: E402
     CrisisDomainReading,
     CrisisDomainConfig,
     CrisisBarEvaluation,
+    CrisisEvaluationContext,
     CrisisState,
     ConditionForExit,
     evaluate_crisis_bar,
     compute_uncorroborated_veto_diagnostics,
     EXIT_CONFIRMATION_BARS,
     ENTRY_DOMAIN_THRESHOLD,
+    EXIT_BAR_REQUIRED_VALID_DOMAINS,
 )
 
 
-def _const_domain(valid: bool, active: bool):
-    def _ev(as_of):
-        return CrisisDomainReading(valid=valid, active=active)
+def _const_domain(valid: bool, active: bool, reason_codes: tuple[str, ...] = ()):
+    def _ev(context: CrisisEvaluationContext):
+        return CrisisDomainReading(valid=valid, active=active, reason_codes=reason_codes)
     return _ev
 
 
@@ -292,6 +294,199 @@ class TestCrisisExit:
         state.advance(calm_bar, _clear_exit_ctx())
         assert state.in_crisis is False
         assert state.crisis_exit_count == 0
+
+
+# ---------------------------------------------------------------------------
+# CrisisEvaluationContext + price_damage plumbing (Message[218]/[219]/[221])
+# ---------------------------------------------------------------------------
+
+class TestCrisisEvaluationContext:
+    def test_evaluators_receive_a_context_not_a_bare_string(self):
+        """Direct check that the Protocol shape really changed — an
+        evaluator that inspects its argument's .as_of/.price_damage
+        attributes (rather than treating it as a bare str) must work."""
+        received = []
+
+        def _capturing_evaluator(context: CrisisEvaluationContext):
+            received.append(context)
+            return CrisisDomainReading(valid=True, active=False)
+
+        config = CrisisDomainConfig(
+            volatility_term_structure=_capturing_evaluator,
+            credit_stress=_const_domain(True, False),
+            price_damage=_const_domain(True, False),
+            participation_collapse=_const_domain(True, False),
+        )
+        evaluate_crisis_bar("2020-03-20", config, price_damage=0.42)
+        assert len(received) == 1
+        assert received[0].as_of == "2020-03-20"
+        assert received[0].price_damage == 0.42
+
+    def test_price_damage_is_passed_identically_to_all_four_evaluators(self):
+        """Every domain gets the SAME context object's price_damage,
+        even domains that don't use it — the shared-context design's
+        whole point (Message[218]) is uniform delivery, not per-domain
+        routing."""
+        seen_values = []
+
+        def _make_capturing(name):
+            def _ev(context: CrisisEvaluationContext):
+                seen_values.append((name, context.price_damage))
+                return CrisisDomainReading(valid=True, active=False)
+            return _ev
+
+        config = CrisisDomainConfig(
+            volatility_term_structure=_make_capturing("vol"),
+            credit_stress=_make_capturing("credit"),
+            price_damage=_make_capturing("price"),
+            participation_collapse=_make_capturing("participation"),
+        )
+        evaluate_crisis_bar("2020-03-20", config, price_damage=0.75)
+        assert seen_values == [
+            ("vol", 0.75), ("credit", 0.75), ("price", 0.75), ("participation", 0.75),
+        ]
+
+    def test_price_damage_defaults_to_none_for_backward_compatible_callers(self):
+        """A caller not yet passing price_damage (e.g. synthetic-fixture
+        tests exercising only D1/D2/D4) must not be forced to supply
+        one — defaults to None, exactly the same "unavailable" signal a
+        real missing Stability value would produce."""
+        captured = {}
+
+        def _capture(context: CrisisEvaluationContext):
+            captured["price_damage"] = context.price_damage
+            return CrisisDomainReading(valid=True, active=False)
+
+        config = CrisisDomainConfig(
+            volatility_term_structure=_capture,
+            credit_stress=_const_domain(True, False),
+            price_damage=_const_domain(True, False),
+            participation_collapse=_const_domain(True, False),
+        )
+        evaluate_crisis_bar("2020-03-20", config)  # no price_damage kwarg
+        assert captured["price_damage"] is None
+
+
+# ---------------------------------------------------------------------------
+# CrisisDomainReading.reason_codes (Message[220]/[221])
+# ---------------------------------------------------------------------------
+
+class TestReasonCodes:
+    def test_defaults_to_empty_tuple_for_backward_compatibility(self):
+        reading = CrisisDomainReading(valid=True, active=False)
+        assert reading.reason_codes == ()
+
+    def test_reason_codes_propagate_through_evaluate_crisis_bar(self):
+        config = _config(
+            price=(False, False),
+        )
+        # Override price_damage evaluator to attach a real reason code,
+        # simulating the canonical_price_damage_unavailable case.
+        config = CrisisDomainConfig(
+            volatility_term_structure=_const_domain(True, False),
+            credit_stress=_const_domain(True, False),
+            price_damage=_const_domain(False, False, reason_codes=("canonical_price_damage_unavailable",)),
+            participation_collapse=_const_domain(True, False),
+        )
+        bar = evaluate_crisis_bar("2020-03-20", config)
+        assert bar.domain_status["price_damage"].reason_codes == ("canonical_price_damage_unavailable",)
+        # Domains without an explicit reason keep the empty-tuple default.
+        assert bar.domain_status["volatility_term_structure"].reason_codes == ()
+
+
+# ---------------------------------------------------------------------------
+# EXIT_BAR_REQUIRED_VALID_DOMAINS — the human-decided 4/4-valid exit gate
+# (Message[220]/[221]/[223])
+# ---------------------------------------------------------------------------
+
+class TestExitBarValidityGate:
+    def test_constant_is_four(self):
+        """Direct regression check on the human's decided value — this
+        constant must never silently drift."""
+        assert EXIT_BAR_REQUIRED_VALID_DOMAINS == 4
+
+    def _entered_state(self) -> CrisisState:
+        state = CrisisState()
+        bar = evaluate_crisis_bar("2020-03-20", _config(vol=(True, True), credit=(True, True)))
+        state.advance(bar, _clear_exit_ctx())
+        assert state.in_crisis is True
+        return state
+
+    def test_one_domain_unavailable_blocks_exit_confirmation(self):
+        """The core regression test for the fix: a bar with
+        active_domain_count < 2 (would have satisfied the OLD exit
+        condition) but only 3 of 4 domains valid must NOT count toward
+        exit — this is exactly the gap Message[220] identified (an
+        unavailable domain is indistinguishable from an observed-calm
+        one under the active-count check alone)."""
+        state = self._entered_state()
+        three_valid_bar = evaluate_crisis_bar(
+            "d",
+            CrisisDomainConfig(
+                volatility_term_structure=_const_domain(True, False),
+                credit_stress=_const_domain(True, False),
+                price_damage=_const_domain(False, False, reason_codes=("canonical_price_damage_unavailable",)),
+                participation_collapse=_const_domain(True, False),
+            ),
+        )
+        assert three_valid_bar.active_domain_count == 0  # would have satisfied the OLD condition
+        assert three_valid_bar.valid_domain_count == 3   # but fails the NEW 4/4 gate
+
+        for _ in range(EXIT_CONFIRMATION_BARS + 2):  # well past 5, to prove it never accumulates
+            state.advance(three_valid_bar, _clear_exit_ctx())
+        assert state.crisis_exit_count == 0
+        assert state.in_crisis is True  # never exits — evidence was unknown, not calm
+
+    def test_four_valid_domains_required_exactly_not_fewer(self):
+        """Explicit boundary check: 3/4 valid must fail, 4/4 valid must
+        pass, on otherwise-identical bars."""
+        state = self._entered_state()
+        three_valid = CrisisDomainConfig(
+            volatility_term_structure=_const_domain(True, False),
+            credit_stress=_const_domain(True, False),
+            price_damage=_const_domain(False, False),
+            participation_collapse=_const_domain(True, False),
+        )
+        bar_3of4 = evaluate_crisis_bar("d", three_valid)
+        state.advance(bar_3of4, _clear_exit_ctx())
+        assert state.crisis_exit_count == 0
+
+        four_valid_calm_bar = evaluate_crisis_bar("d2", _config())  # all 4 valid, all calm
+        for _ in range(EXIT_CONFIRMATION_BARS):
+            state.advance(four_valid_calm_bar, _clear_exit_ctx())
+        assert state.in_crisis is False
+
+    def test_unavailable_domain_resets_an_in_progress_countdown(self):
+        """A domain going unavailable partway through an otherwise-valid
+        5-bar countdown must reset the count to zero (same "any failing
+        bar resets, does not merely pause" rule as every other exit
+        sub-condition), not merely fail to advance it."""
+        state = self._entered_state()
+        calm_bar = evaluate_crisis_bar("d", _config())
+        gap_bar = evaluate_crisis_bar(
+            "d_gap",
+            CrisisDomainConfig(
+                volatility_term_structure=_const_domain(True, False),
+                credit_stress=_const_domain(True, False),
+                price_damage=_const_domain(False, False),
+                participation_collapse=_const_domain(True, False),
+            ),
+        )
+
+        state.advance(calm_bar, _clear_exit_ctx())
+        state.advance(calm_bar, _clear_exit_ctx())
+        assert state.crisis_exit_count == 2
+
+        state.advance(gap_bar, _clear_exit_ctx())  # one domain unavailable this bar
+        assert state.crisis_exit_count == 0
+        assert state.in_crisis is True
+
+        # Must need a full fresh 5-bar run afterward.
+        for _ in range(EXIT_CONFIRMATION_BARS - 1):
+            state.advance(calm_bar, _clear_exit_ctx())
+            assert state.in_crisis is True
+        state.advance(calm_bar, _clear_exit_ctx())
+        assert state.in_crisis is False
 
 
 # ---------------------------------------------------------------------------
