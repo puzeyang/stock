@@ -2291,3 +2291,17 @@ Message[249] - CLAUDE - 2026-08-29T08:27:37-0400 - **[Out-of-turn, continuing th
 范围声明（严格遵守Message[247]/[248]商定的协议）：本消息**不**对这个模式是好是坏下结论——一个"利差处于trailing两年相对高位但绝对水平温和"的信号，究竟应该算作D2的真阳性（信用压力域的相对定义本来就该捕捉这种情况）还是伪影（把window形状误认成压力），取决于D2自己尚未冻结的operational target（Message[247]点3要求的domain-level target），本消息不擅自替target下判断。也不提出任何阈值/窗口长度调整。这仍然是纯诊断面板输出，用于后续在冻结target/candidate/negative control之后的正式校准工作使用。
 
 未做：未处理D2的`widen_stress`/`extreme`分支；未做Part B（D4 member-count分布，下一条消息处理）；未生成任何候选阈值；未提出D2的operational target应该是什么。
+
+---
+
+Message[250] - CLAUDE - 2026-08-29T08:30:37-0400 - **[Out-of-turn, continuing the panel work from Message[249], per the human's ongoing direction — does not preempt review of Message[248]/[249].] Panel Part B (D4 member-count distribution + leave-one-sector-out stability), full real timeline 2018-06-22 to present (2053 valid days). Headline finding, directly hand-verified: `short_collapse` triggers on 363/2053 real days (17.68%), and removing ANY single one of the 9 sectors from the universe flips ZERO of those 363 classifications — a mechanical consequence of the 0.25 threshold sitting almost exactly at 2/9≈0.222, not evidence the signal is broad-based.**
+
+方法：`diagnostic_panel_d4.py`（scratchpad，未改动crisis.py/engine.py），对2018-06-22至今全部真实交易日，用真实`compute_participation`计算`pct_above_SMA50`，还原为真实eligible member count（k/9形式）；随后对`short_collapse=True`的全部363个真实日期，逐一移除9个板块中的每一个，重新计算，统计classification是否翻转。
+
+发现：
+1. **k值分布（真实member count，非连续小数）**：k=0出现91天(4.43%)，k=1出现113天(5.50%)，k=2出现159天(7.74%)，其余k=3到9依次为105/104/174/262/303/440/302天。`short_collapse`阈值0.25换算成member count是"k<=2.25"，即k∈{0,1,2}都触发，合计363天(17.68%)——这与Message[240]/[247]已确认的"9成员universe只有10个离散值"完全吻合，2/9≈0.222确实<=0.25，3/9≈0.333确实>0.25。
+2. **Leave-one-sector-out：全部9个板块，0翻转。** 直接核实机制（非script bug）：在k=2的边界日（如2018-10-10，pct50=0.2222），移除任意一个板块后，新分母变成8：如果移除的是"未跌破SMA50"的板块之一，新比例是2/8=0.25，仍然满足`<=0.25`（等号情况）；如果移除的是"已跌破SMA50"的板块之一，新比例降到1/8=0.125，触发条件更容易满足，不会翻转。手工核对2018-10-10当天全部9种移除组合，结果与此推理完全一致（7种给出0.25，2种给出0.125，全部`<=0.25`）。这是阈值0.25恰好卡在2/9这个离散点附近所导致的结构性稳定，不是"D4信号本身broad-based、不受单一板块驱动"的证据——后者需要在阈值远离任何k/9整数点的情况下才能得出，本次结果不能这样解读。
+
+范围声明：本消息**不**据此判断D4阈值是否需要调整为显式的member-count形式（如"<=2 of 9"），也不判断这种"阈值恰好卡在离散网格边界"本身是好是坏——这是Message[247]点5要求的候选参数化方式（用member count而非连续小数登记候选），本消息只是提供描述性诊断数据，供后续冻结target/candidate后使用，不代替那一步。
+
+未做：未检验k=3附近（long_collapse阈值0.35对应3.15/9，同样接近离散点）是否有类似结构；未检验speed_collapse维度的leave-one-out；未对D2/D4之外的domain做进一步diagnostic panel工作。
