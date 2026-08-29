@@ -178,6 +178,28 @@ LABELED_EPISODES: tuple[LabeledEpisode, ...] = (
         "without credit stress). A real test of whether D1 alone "
         "(2-of-4 requires TWO domains) can force a false CRISIS entry.",
     ),
+    LabeledEpisode(
+        "2023 October bond market selloff", "2023-10-02", "2023-10-31", False,
+        "Real, documented rates-driven selloff (real 10-year Treasury "
+        "yield touched ~5% intramonth for the first time since 2007) — "
+        "added per the human's explicit selection (Messages[246]/[247]'s "
+        "identified real gap between the March 2023 banking stress and "
+        "the July 2024 yen-carry episode). Verified against real data "
+        "before adding: VIX rose from 17.61 (2023-10-02) to 21.40 "
+        "(2023-10-19), real 252-session drawdown peaked at -9.97% "
+        "(2023-10-27), real Breadth participation genuinely weakened "
+        "(pct_above_sma50 hit 0.0% on 2023-10-23/27/31) — but real OAS "
+        "stayed calm throughout (4.11-4.51pp, well under the 6.00pp "
+        "threshold), distinguishing it economically from the March 2023 "
+        "banking-stress episode already in this set (credit-driven) and "
+        "from 2024-08/2025-04 (single-day vol spikes) — this is a "
+        "real, moderate, multi-week, rates/duration-driven stress event "
+        "without a credit-stress or systemic-liquidity component. "
+        "Labeled negative on that basis, independent of and prior to "
+        "checking any CRISIS domain formula's actual output on these "
+        "dates, per Message[247] point 4's requirement that episode "
+        "selection/labeling not be conditioned on formula behavior.",
+    ),
 )
 
 

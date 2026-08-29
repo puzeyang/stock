@@ -2470,3 +2470,15 @@ Message[259] - CLAUDE - 2026-08-29T10:19:38-0400 - **[Out-of-turn, completing th
 验证：脚本独立运行两次（修正bounded/unbounded区分前后）确认底层spell/crossing数据完全一致，只是呈现方式改进；输出已持久化到`outputs/panel_d_d3_moderate_slow_boundary.json`，含正确的D3专属thresholds metadata；两个冻结产物哈希核对无变化；`git status`确认改动范围符合预期。
 
 至此，Message[247]预注册的四项首批分析（A: D2 contingency table，B: D4 member-count/LOO，C: D1 relative-only spell/drawdown，D: D3 moderate-slow boundary/crossing）全部完成。
+
+---
+
+Message[260] - CLAUDE - 2026-08-29T10:41:03-0400 - **[Out-of-turn, per the human's continued direction.] Expanded `crisis_validation.py`'s episode set from 8 to 9: added "2023 October bond market selloff" (2023-10-02 to 2023-10-31, real 10Y Treasury yield spike to ~5%) as a negative label, closing part of the real 2023-04→2024-07 gap identified in Message[246]/[247]. The human selected this specific episode; I verified it against real data and drafted the label independently of any CRISIS formula output before the human approved adding it. 546/546 v5.1 tests pass, frozen artifacts unchanged.**
+
+背景：这是执行Message[246]/[247]提出的episode集合扩展计划的第一步，不是自主决定——human明确选择了"2023-10 bond market selloff"这一个具体episode（在被问及具体候选时，human最终选择只批准这一项，另外两项候选——2018年中trade-war窗口、第二个calm-market负标签——未获批准，未添加）。
+
+**核实过程（在写标签之前，独立于任何CRISIS formula输出）**：直接查询真实pinned数据，2023-09-15到2023-11-15共44个真实交易日，覆盖完整。核实VIX从2023-10-02的17.61上升到2023-10-19的21.40；OAS全程保持4.11-4.51pp，远低于6.00pp阈值；真实252-session drawdown在2023-10-27达到峰值-9.97%（低于D3的12%阈值）；真实Breadth participation确实走弱，pct_above_sma50在10-23/10-27/10-31三天降到0.0%。基于这些真实经济特征（利率驱动、信用市场平静、非系统性），标记为负标签（non-CRISIS），标签文本在human批准之前已经写好并经human确认。
+
+**加入后的验证**：`crisis_validation.py`独立import正常，episode数量从8变为9；`test_crisis_validation.py`12项测试全部通过（含5分钟+的运行时间，符合已知的慢测试特征）；通过真实engine重跑`run_validation_study`：recall保持100%（4/4 true positive不变），false_positive_rate从25%(1/4)变为20%(1/5)——新增的2023-10 episode被正确分类为true negative，唯一仍误报的还是2025-04-04（与已确立结论一致，四个domain formula当天全部真实active）。完整`regime/tests/v5_1/`suite 546/546通过，无回归。两个冻结产物哈希核对无变化。
+
+**范围声明**：本次只添加了一个episode，不是完整的gap填补——2018-06到2018-10的gap、"多于一个calm-market负标签"这两项此前提出的候选仍未处理，是否/何时补充由human决定，不由我自主推进。这仍然是exploratory/development集合的一部分，不是预注册研究——新增这一个episode不改变Message[255]已确立的"2018-2025全部已被查看过，不能再充当unseen holdout"这个状态。
