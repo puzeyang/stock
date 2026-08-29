@@ -2276,3 +2276,18 @@ Message[248] - CLAUDE - 2026-08-29T08:25:18-0400 - **All six points in Message[2
 **Point 6（协议缺少objective/multiplicity控制）——接受，同样是流程加强，无需核实具体事实。**
 
 **采纳的下一步**：建立`continuous_domain_diagnostic_panel_v0`——纯描述性机制探索，不生成阈值、不打overall好坏标签，覆盖2018-06-22至今完整连续时间轴，逐bar输出D1-D4全部raw values/branch/subcondition/validity/reason/同日pair/连续spell。首批分析按ChatGPT预注册的四项，优先(A) D2 absolute/relative分支contingency table 和 (B) D4 member-count触发分布 + leave-one-sector-out稳定性（human在Message[247]结论段落里明确点名这两项优先）。这仍然是纯诊断，不触碰crisis.py/engine.py任何一行代码，不产出任何候选阈值结论。
+
+---
+
+Message[249] - CLAUDE - 2026-08-29T08:27:37-0400 - **[Out-of-turn, continuing the accepted `continuous_domain_diagnostic_panel_v0` work from Message[248], per the human's ongoing "keep pushing into new exploration" direction — does not preempt review of Message[248].] Panel Part A (D2 absolute/relative branch contingency table), full real timeline 2018-06-22 to present (2052 valid trading days, far beyond the 8-episode set). Pure descriptive diagnostic — no thresholds proposed, no pass/fail labels. Headline finding: the relative-percentile branch (`level_pct504>=90`) fires alone (`rel_only`, absolute leg NOT met) on 6.97% of all real trading days since 2018-06-22 — more than double the `both`+`abs_only` cells combined — and 996 of the 1828 real "neither" (calm) days carry an OAS level in the exact same absolute range as `rel_only`'s trigger cell, differing only in where the trailing 504-session window happens to sit.**
+
+方法：`diagnostic_panel_d2.py`（scratchpad，未改动crisis.py/engine.py），对`raw_bundle.benchmark`真实交易日历里2018-06-22（VIX9D真实覆盖起点）至今的全部日期，逐日读取真实OAS水平和504-session causal_midrank，只计算D2的`level_stress`两条腿（absolute: `current_level>=6.00pp`；relative: `level_pct504>=90.0`），不涉及`widen_stress`/`extreme`/D2整体`active`。
+
+发现（全部为直接读值，不是推断）：
+1. **Contingency table**（2052个有效交易日）：`abs_only`=28天(1.36%)，`rel_only`=143天(6.97%)，`both`=53天(2.58%)，`neither`=1828天(89.08%)。`rel_only`单独就是`abs_only`的5倍多，是D2 level_stress触发的主要驱动力，不是边缘情况。
+2. **`rel_only`单元格的真实OAS范围是[3.42, 5.99]pp**——按定义低于6.00pp绝对阈值，但已经触及90分位。`neither`单元格（真实平静期基线）范围是[2.59, 5.92]pp，两者有大量重叠。直接量化重叠：以`rel_only`最低值3.42pp为界，`neither`单元格里有996/1828天（54.5%）的OAS水平落在同一个[3.42, 5.92]pp区间内，却因为窗口形状不同而被分类为"calm"而非"stress"。即：同一个真实绝对利差水平，在这套504-session相对分位机制下，可能被分到`rel_only`（level_stress触发）或`neither`（不触发），差异完全来自trailing window的形状，不是当天信用利差本身有什么不同。
+3. **`rel_only`是22段真实连续session run**，不是零散噪音：覆盖2018-11到2019-02（最长的一段）、2019-02、2019-05、2019-08（分3段，与已知的2019年8月贸易战episode吻合）、2019-10（2段）、2020-02到03（COVID前夜）、2022年多段（与2022熊市吻合）……一直到2025-04和2026-03。这确认了relative branch不是2025-04-04一次性的巧合，而是这套机制在过去8年里反复出现的、结构性的行为模式。
+
+范围声明（严格遵守Message[247]/[248]商定的协议）：本消息**不**对这个模式是好是坏下结论——一个"利差处于trailing两年相对高位但绝对水平温和"的信号，究竟应该算作D2的真阳性（信用压力域的相对定义本来就该捕捉这种情况）还是伪影（把window形状误认成压力），取决于D2自己尚未冻结的operational target（Message[247]点3要求的domain-level target），本消息不擅自替target下判断。也不提出任何阈值/窗口长度调整。这仍然是纯诊断面板输出，用于后续在冻结target/candidate/negative control之后的正式校准工作使用。
+
+未做：未处理D2的`widen_stress`/`extreme`分支；未做Part B（D4 member-count分布，下一条消息处理）；未生成任何候选阈值；未提出D2的operational target应该是什么。
