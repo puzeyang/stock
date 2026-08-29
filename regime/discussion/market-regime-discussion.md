@@ -2608,3 +2608,41 @@ Message[267] - CLAUDE - 2026-08-29T17:51:17-0400 - **All three points in Message
 **验证汇总**：新增10项测试（test_engine.py+5，test_run_rough_baseline.py+5），全部通过；完整`regime/tests/v5_1/`suite从564增至574项，全部通过（6分35秒）；两个冻结产物哈希核对无变化；用真实2026-08-21/08-24数据端到端验证了新reason格式（`risk_appetite.unavailable:`/`condition.unavailable:`）和新metadata字段（`artifact_kind`/`git_commit`/`git_dirty`）都在真实运行中正确产出。
 
 结论：Message[266]的三点全部核实、修复并有专门测试覆盖，不再是"功能已修、回归契约待补"的中间状态。按human在Message[266]结尾的建议，这条runner工程支线到此可以关闭，回到尚未校准的market-regime实质问题（D1-D4阈值校准协议、episode集合扩展等，Message[246]/[247]已提出但尚未推进）。
+
+---
+
+Message[268] - CLAUDE - 2026-08-29T17:54:01-0400 - **[Out-of-turn, per the human's "continue" direction — resumes the calibration protocol's step 1 (Message[246]/[247]): freeze each domain's operational target in writing, independent of current formula behavior, before any candidate/threshold work.] Draft operational targets for D1-D4, grounded in the design doc's own domain names (§9.1: "volatility/term-structure stress", "canonical credit stress", "canonical price damage", "participation collapse") and standard, formula-independent definitions — not restatements of the current VIX/OAS/drawdown/breadth thresholds. Explicitly a DRAFT for review, not frozen by this message alone.**
+
+范围与方法论声明（严格执行Message[247]点4的要求）：以下target定义**故意不引用**当前D1-D4任何具体阈值数字（30.0、6.00pp、12%、0.25等）——如果target的措辞本身就是"VIX超过30"，那就是循环论证（用公式自己的产出定义公式该测什么）。每个target先描述**经济现象**本身，再单独讨论"用什么可观测量去检测它"，两者分开写。design doc §9.1原文只给出四个domain的名字（"volatility/term-structure stress"/"canonical credit stress"/"canonical price damage"/"participation collapse"），没有给出经济学定义——这次起草需要真正填补这个空白，不是简单重复已有代码在做什么。
+
+**D1 — Volatility / Term-Structure Stress（波动率/期限结构压力）**
+
+*现象*：市场对近期风险的定价出现异常放大，且这种放大在期限结构上表现为"近端比远端更贵"（backwardation）——这是压力状态下典型的"现在比未来更可怕"的定价模式，与波动率绝对水平本身是两个独立维度：绝对水平衡量"当前有多害怕"，期限结构衡量"这种害怕是否被定价为短期特有、而非长期结构性的"。
+
+*独立于当前公式的判据方向*（不是数字）：(a) 隐含波动率相对其自身长期分布处于极端高位（用什么样本窗口、什么分位数是校准阶段要回答的问题，这里只说"存在一个真实、可辩护的相对基准"）；(b) 近端隐含波动率高于远端隐含波动率（backwardation本身，而非某个具体ratio数值）；(c) 短期内的急剧跳升（而非缓慢爬升到高位）。三者中(a)独立捕捉"绝对水平"，(b)独立捕捉"期限结构形状"，(c)独立捕捉"变化速度"——这与当前代码的三个sub-condition在概念上对应，但target本身不应该说"ratio>=1.05"这种数字。
+
+*已知的real-world校准参考点（不是阈值提案，只是文献/常识锚点）*：VIX历史上，长期均值大致在15-20附近，2020年3月和2008年危机期间曾达到80+；VIX期限结构backwardation（近月高于远月）历史上只在真实压力事件中出现，绝大多数时间是contango（远月更贵，反映风险溢价的正常时间价值）。这些是可独立验证的市场常识，不是本次投资发明的数字。
+
+**D2 — Canonical Credit Stress（信用压力）**
+
+*现象*：债权投资者要求的额外补偿（相对无风险利率的信用利差）异常扩大，反映市场对违约风险/流动性风险的重新定价。这与D1不同——D1测的是"对未来不确定性的定价"，D2测的是"对特定信用风险的定价"，两者经济上相关但不是同一件事（design §9.1"Economic correlation is expected"允许两者同时发生，不要求互斥）。
+
+*独立于当前公式的判据方向*：(a) 信用利差绝对水平处于历史高位（真实经济含义：投资者要求的额外补偿远超正常时期）；(b) 信用利差在短期内快速走扩（而非利差本身绝对不高，但持续温和扩大——后者更像是缓慢的信用周期恶化，不一定是"压力"）。当前代码用相对分位数（504-session percentile）近似(a)，这次Message[249]的diagnostic panel已经发现这个相对分位机制存在真实的"窄窗口artifact"问题（同一绝对利差水平，因为trailing window形状不同，可能被分到"压力"或"平静"）——这正是operational target需要先说清楚"应该测的是什么"，再讨论"用504-session相对分位数是不是测量这个target的好方法"这两个问题分开的原因。
+
+*已知的real-world校准参考点*：高收益债利差（OAS）历史正常区间大致3-5个百分点，2008年金融危机峰值曾达到近20个百分点，2020年3月COVID峰值约10.87个百分点（本投资已反复验证的真实数字）。
+
+**D3 — Canonical Price Damage（价格损伤）**
+
+*现象*：风险资产价格相对近期高点出现实质性、非噪音级别的下跌，且这种下跌的严重程度足以对投资组合造成真实的经济损失（这是D3与其余三个domain最大的不同——D1/D2/D4测的都是"压力的间接信号"，D3测的是"损失本身"）。
+
+*独立于当前公式的判据方向*：(a) 累计回撤幅度（相对近期高点，不论下跌速度）；(b) 短期内的急跌（速度维度，与累计幅度分开）；(c) 中期趋势性损伤（既不是单日暴跌，也不是仅仅小幅盘整，而是持续一段时间的实质性下跌）。三者对应当前代码的drawdown/5日/20日三个sub-condition，但target层面的关键问题是：**一次缓慢、持续、最终幅度可观但速度不快的下跌，是否也应该被认定为price damage？**——这正是Message[242]/[243]/[244]已经发现的真实行为边界（`moderate_slow_drawdown_without_speed_confirmation`），本次target draft把这个问题正式列为需要回答、而不是回避的问题：如果经济学答案是"是"（缓慢但深的回撤也是真实损伤），那么当前"12%-20%区间必须有速度确认"的设计就有理由调整；如果答案是"否"（只有伴随速度确认的回撤才算真正的压力事件，缓慢下跌可能只是正常的估值修正），那当前设计是对的，2023年banking stress那种情况D3不触发本来就是正确行为。这个问题本身不能靠数据驱动回答，需要先有经济学立场。
+
+**D4 — Participation Collapse（参与度坍塌）**
+
+*现象*：市场广度（有多少个体资产/板块仍然表现健康）与指数层面的表现出现背离——即使基准指数本身还没有大跌，如果只有少数几个板块/个股在支撑指数，这本身就是一种脆弱性信号（"广度领先于价格"是技术分析里一个有真实历史依据的现象，不是本次投资发明的）。这是D4与D3的关键区别：D3测的是"已经发生的价格损失"，D4测的是"支撑价格的结构是否健康"，理论上D4应该能够领先于D1/D2/D3捕捉到早期压力（这也是Message[236]"anchored entry"讨论里D1+D4经常先于D2/D3触发这个现象的一个可能经济学解释，而不只是"noise"）。
+
+*独立于当前公式的判据方向*：(a) 当前处于健康状态（相对短周期趋势）的成分数量占比处于低位；(b) 当前处于健康状态（相对长周期趋势）的成分数量占比处于低位；(c) 健康成分数量在短期内快速减少（速度维度）。**关键的、Message[247]点5已经指出、Message[240]/[250]的diagnostic panel已经量化确认的问题**：当前用9个板块ETF构成的universe，任何"占比"类判据在离散网格上都可能产生虚假精度（例如"25%阈值"实际上等价于"最多2/9"这种整数边界效应）——这是target定义阶段就应该正视的测量学问题，不是校准阶段才发现的意外：**9个样本单元是否足以支撑一个连续百分比阈值，还是应该从一开始就把target表述为member count（"多少个板块健康"）而不是百分比**，这个问题的答案会影响后续所有D4候选阈值的表述形式。
+
+*已知的real-world校准参考点*：真实历史危机期间（2008、2020-03、2018-12），市场广度指标（如50日/200日均线以上成分占比）多次跌至个位数百分比甚至0%，这是有充分历史先例的真实现象，不是罕见巧合。
+
+**范围声明**：以上四段是draft，不是frozen——本消息故意不提出任何具体候选数字、不提出任何阈值调整、不修改任何代码；D3那个"缓慢回撤是否算真正压力"的经济学立场问题本消息也没有替human做决定，只是把它列为需要回答的问题。请求复核：这四个target的经济学定义本身是否准确、是否真正独立于当前公式（有没有不小心又循环引用了阈值）；是否遗漏了Message[247]点4要求的"VIX/OAS以外的流动性或融资指标、市场功能失灵、政策/设施干预、跨资产传播"这类补充判据（目前四段都只谈了D1-D4各自现有代理变量对应的现象，没有引入全新的、不同资产类别的独立确认信号，这是否是这次draft的一个真实缺口）。
