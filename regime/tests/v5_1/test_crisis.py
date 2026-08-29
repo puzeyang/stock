@@ -27,6 +27,7 @@ from v5_1.crisis import (  # noqa: E402
     EXIT_CONFIRMATION_BARS,
     ENTRY_DOMAIN_THRESHOLD,
     EXIT_BAR_REQUIRED_VALID_DOMAINS,
+    ANCHOR_DOMAIN_KEYS,
 )
 from v5_1.stability import PriceDamageComponents  # noqa: E402
 
@@ -146,10 +147,17 @@ class TestCrisisEntry:
             state.advance(bar, _clear_exit_ctx())
             assert state.in_crisis is False, f"single active domain {kwargs} incorrectly entered CRISIS alone"
 
-    def test_every_pair_of_domains_enters_crisis(self):
-        """Golden-vector requirement: 'Every CRISIS domain... pair.' All
-        C(4,2)=6 domain-pair combinations, not just the one (vol+credit)
-        pair the existing tests happen to use."""
+    def test_every_pair_of_domains_enters_crisis_except_the_unanchored_one(self):
+        """Golden-vector requirement updated per the anchored-entry
+        extension (Messages[232]/[233]/[234]/[236]/[238], human's exact
+        instruction: "必须含D2或D3"/"no change"): of all C(4,2)=6
+        domain-pair combinations, the 5 pairs that include D2
+        (credit_stress) or D3 (price_damage) still enter CRISIS exactly as
+        before — only vol+participation (D1+D4, the one pair with NEITHER
+        a credit nor a price-damage confirmation) no longer enters. This
+        is NOT a change to the CLOSED §9.2/C13 "2-of-4" topology or count
+        — it is an additional confirmation requirement on top of it, per
+        the human's explicit decision. See ANCHOR_DOMAIN_KEYS."""
         import itertools
         domain_names = ["vol", "credit", "price", "participation"]
         for a, b in itertools.combinations(domain_names, 2):
@@ -157,7 +165,89 @@ class TestCrisisEntry:
             state = CrisisState()
             bar = evaluate_crisis_bar("2020-03-20", _config(**kwargs))
             state.advance(bar, _clear_exit_ctx())
-            assert state.in_crisis is True, f"domain pair {a}+{b} did not enter CRISIS"
+            if {a, b} == {"vol", "participation"}:
+                assert state.in_crisis is False, (
+                    "domain pair vol+participation (D1+D4) has neither a credit nor a "
+                    "price-damage confirmation and must NOT enter CRISIS under the "
+                    "anchored-entry rule"
+                )
+            else:
+                assert state.in_crisis is True, f"domain pair {a}+{b} did not enter CRISIS"
+
+    def test_d1_d4_only_does_not_enter_crisis_from_non_crisis(self):
+        """Direct, narrowly-scoped regression test for the anchored-entry
+        rule's core case: D1(volatility)+D4(participation_collapse) active
+        with D2/D3 both calm — active_domain_count==2 satisfies the CLOSED
+        ENTRY_DOMAIN_THRESHOLD count alone, but must NOT enter CRISIS
+        without an anchor confirmation."""
+        state = CrisisState()
+        bar = evaluate_crisis_bar(
+            "2020-03-20",
+            _config(vol=(True, True), participation=(True, True)),
+        )
+        assert bar.active_domain_count == 2  # count-only condition is satisfied
+        state.advance(bar, _clear_exit_ctx())
+        assert state.in_crisis is False
+        assert state.crisis_exit_count == 0
+
+    def test_each_anchored_pair_variant_enters_crisis(self):
+        """All 5 domain-pair combinations that DO include D2 or D3 (i.e.
+        every pair except D1+D4) enter CRISIS — explicit, non-exhaustive-
+        loop version of the pair test above for direct readability."""
+        anchored_pairs = [
+            dict(vol=(True, True), credit=(True, True)),
+            dict(vol=(True, True), price=(True, True)),
+            dict(credit=(True, True), price=(True, True)),
+            dict(credit=(True, True), participation=(True, True)),
+            dict(price=(True, True), participation=(True, True)),
+        ]
+        for kwargs in anchored_pairs:
+            state = CrisisState()
+            bar = evaluate_crisis_bar("2020-03-20", _config(**kwargs))
+            state.advance(bar, _clear_exit_ctx())
+            assert state.in_crisis is True, f"anchored pair {kwargs} did not enter CRISIS"
+
+    def test_d1_d4_only_does_not_change_diagnostic_fields(self):
+        """Per the human's explicit "no change" answer to Message[236]'s
+        closing question: a D1+D4-only bar must not trigger any NEW
+        diagnostic/fallback state. `compute_uncorroborated_veto_diagnostics`
+        is driven purely by active_domain_count and veto state, entirely
+        independent of the anchored-entry rule — confirm it is unaffected."""
+        bar = evaluate_crisis_bar(
+            "2020-03-20",
+            _config(vol=(True, True), participation=(True, True)),
+        )
+        diag_no_veto = compute_uncorroborated_veto_diagnostics(bar.active_domain_count, any_hard_veto_active=False)
+        assert diag_no_veto.uncorroborated_veto is False
+        diag_with_veto = compute_uncorroborated_veto_diagnostics(bar.active_domain_count, any_hard_veto_active=True)
+        # active_domain_count == 2 is "corroborated" for veto-diagnostic purposes
+        # regardless of the anchored-entry rule — this diagnostic is unchanged.
+        assert diag_with_veto.uncorroborated_veto is False
+
+    def test_d1_d4_only_while_already_in_crisis_does_not_force_exit_or_advance_countdown(self):
+        """The 'already-in-CRISIS, drops to D1+D4-only' case Message[238]
+        required coverage for: once in CRISIS via a genuine anchored entry,
+        a later bar with only D1+D4 active (no D2/D3, but still
+        active_domain_count==2 >= ENTRY_DOMAIN_THRESHOLD) must NOT force an
+        exit or advance crisis_exit_count — the existing exit predicate's
+        own `active_domain_count < ENTRY_DOMAIN_THRESHOLD` requirement
+        already handles this with no additional code needed (verified here
+        directly, not just by inspection)."""
+        state = CrisisState()
+        entry_bar = evaluate_crisis_bar(
+            "2020-03-20",
+            _config(vol=(True, True), credit=(True, True)),
+        )
+        state.advance(entry_bar, _clear_exit_ctx())
+        assert state.in_crisis is True
+
+        d1_d4_only_bar = evaluate_crisis_bar(
+            "2020-03-21",
+            _config(vol=(True, True), participation=(True, True)),
+        )
+        state.advance(d1_d4_only_bar, _clear_exit_ctx())
+        assert state.in_crisis is True  # remains in CRISIS, no forced exit
+        assert state.crisis_exit_count == 0  # does not advance the exit countdown
 
     def test_entry_is_immediate_no_ordinary_downgrade_delay(self):
         """A single bar with 2+ active domains enters CRISIS on that exact

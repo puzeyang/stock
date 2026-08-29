@@ -7,11 +7,22 @@ stress, (3) canonical price damage, (4) participation collapse.
 another (economic correlation between them is expected and fine; Direction,
 Condition, and the aggregate pillars themselves do not count as domains).
 
-Entry (§9.2): two or more VALID domains ACTIVE on the same bar enters CRISIS
-immediately — no ordinary downgrade delay. At least two domains must be
-VALID (not just active) for CRISIS entry to even be considered; a hard veto
-with fewer than two confirmed domains forces RISK_OFF instead, with two
-distinguishable diagnostic states:
+Entry (§9.2, EXTENDED per the human's explicit decision — discussion log
+Messages[232]/[233]/[236]/[238], "anchored entry"): two or more VALID
+domains ACTIVE on the same bar, WHERE AT LEAST ONE of the two-or-more
+active domains is credit_stress (D2) or price_damage (D3), enters CRISIS
+immediately — no ordinary downgrade delay. A bar where only volatility_
+term_structure (D1) and participation_collapse (D4) are active does NOT
+enter CRISIS, even with active_domain_count>=2 — found, via exploratory
+analysis (Messages[229]/[232]), to empirically co-occur far more often
+than D2/D3 do, and to be the actual mechanism behind every apparent false
+positive found in that exploratory challenge set. At least two domains
+must be VALID (not just active) for CRISIS entry to even be considered; a
+hard veto with fewer than two confirmed domains forces RISK_OFF instead,
+with two distinguishable diagnostic states — UNCHANGED by the anchored-
+entry extension above, per the human's explicit "no change" answer
+(Message[238]) to whether a D1+D4-only bar should publish any new
+diagnostic or alter these fields:
   - 0 domains active: `uncorroborated_veto=true`, `crisis_watch=false`;
   - 1 domain active:  `uncorroborated_veto=true`, `crisis_watch=true`.
 
@@ -62,6 +73,7 @@ from .stability import PriceDamageComponents
 EXIT_CONFIRMATION_BARS = 5  # CLOSED (§9.3): "five consecutive valid bars", not EMPIRICAL.
 ENTRY_DOMAIN_THRESHOLD = 2  # CLOSED (§9.2/C13): "2-of-4", not EMPIRICAL.
 EXIT_BAR_REQUIRED_VALID_DOMAINS = 4  # human-decided (Message[220]/[221]/[223], not an original v5.1 design-doc CLOSED value): each exit-confirmation bar must have ALL FOUR domains valid, not merely "fewer than two active" — closes the gap where an unavailable domain (e.g. D3's price_damage=None) is indistinguishable from an observed-calm domain under the entry-side ENTRY_DOMAIN_THRESHOLD check alone (design §9.2's "Missing/stale is unavailable, never calm or stressed" applied to exit, not just entry). Most conservative option of the ones discussed; the human explicitly chose it over a lower/data-driven threshold.
+ANCHOR_DOMAIN_KEYS = ("credit_stress", "price_damage")  # human-decided (Messages[232]/[233]/[234]/[236]/[238], human's exact instruction: "必须含D2或D3"/"no change"): entry additionally requires at least one of D2 (credit_stress) or D3 (price_damage) to be VALID and ACTIVE, on top of the CLOSED ENTRY_DOMAIN_THRESHOLD=2 count. Empirical motivation, not a reinterpretation of §9.2/C13's CLOSED "2-of-4" topology: across the 8-episode exploratory challenge set (`crisis_validation.py`), every apparent false positive was a D1(volatility)+D4(participation_collapse)-only pair with neither a credit nor a price-damage confirmation, while every one of the 6 positive-labeled crisis episodes had a real D2 or D3 confirmation at first entry. Diagnostic fields (`uncorroborated_veto`, `crisis_watch`) are explicitly UNCHANGED by this — the human's answer to Message[236]'s closing question was "no change", i.e. no new fallback/watch state is published when entry is blocked this way.
 
 
 @dataclass(frozen=True)
@@ -247,18 +259,33 @@ class CrisisState:
         explicitly so callers can treat this as either a mutation or a
         pure-ish step depending on style.
 
-        Entry (§9.2): fires immediately (no downgrade delay to wait through
-        — CRISIS entry from any prior state is itself the fastest possible
-        transition) whenever `valid_domain_count >= 2` AND
-        `active_domain_count >= 2`. Note both conditions matter: "at least
-        two domains must be valid" (§9.2) is a real, separate requirement
-        from "two domains active" — with only 1 valid domain, that domain
-        being active can never reach the 2-active threshold anyway (an
-        active domain is by definition also valid), so in practice
-        `active_domain_count >= 2` already implies `valid_domain_count >=
-        2` structurally; the valid-domain check is kept explicit anyway to
-        make that implication a verified invariant rather than an
-        unstated assumption a future domain-count change could break.
+        Entry (§9.2, EXTENDED per the human's explicit decision, discussion
+        log Messages[232]/[233]/[236]/[238] — "anchored entry"): fires
+        immediately (no downgrade delay to wait through — CRISIS entry
+        from any prior state is itself the fastest possible transition)
+        whenever `valid_domain_count >= 2` AND `active_domain_count >= 2`
+        AND at least one of the two active domains is `credit_stress` (D2)
+        or `price_damage` (D3) — i.e. a bar where ONLY `volatility_term_
+        structure` (D1) and `participation_collapse` (D4) are active does
+        NOT enter CRISIS. This is a real, human-decided change to §9.2's
+        entry corroboration rule, not a tuning of an EMPIRICAL threshold
+        within it — found via exploratory analysis (discussion log
+        Messages[229]/[232]) that D1+D4 empirically co-occur far more
+        than D2/D3 do, and that all 3 apparent false positives in that
+        exploratory challenge set were D1+D4-only bars, while D2/D3
+        stayed quiet specifically on those same bars. Per the human's
+        explicit "no change" answer (Message[238]) to the one remaining
+        open question: a D1+D4-only bar that fails this anchored-entry
+        check does NOT publish any new diagnostic field, does NOT cap the
+        ordinary categorical state, and does NOT alter `crisis_watch`/
+        `uncorroborated_veto` (those remain exactly what
+        `compute_uncorroborated_veto_diagnostics` already defines,
+        unchanged) — the ordinary state machine runs exactly as it did
+        before this change on such a bar. `valid_domain_count >= 2` is
+        kept as a separate, explicit check for the same invariant-
+        verification reason as before (an active domain is always also
+        valid, so `active_domain_count >= 2` already implies it
+        structurally).
 
         Exit (§9.3, extended per Message[220]/[221]/[223]'s human-decided
         fail-closed fix): while in CRISIS, exits only after
@@ -284,7 +311,12 @@ class CrisisState:
         count") — checked before the ordinary per-bar exit-condition
         check, since renewed entry is a stronger, overriding signal.
         """
-        if bar.active_domain_count >= ENTRY_DOMAIN_THRESHOLD:
+        anchored_confirmation = any(
+            (reading := bar.domain_status.get(key)) is not None and reading.valid and reading.active
+            for key in ANCHOR_DOMAIN_KEYS
+        )
+
+        if bar.active_domain_count >= ENTRY_DOMAIN_THRESHOLD and anchored_confirmation:
             assert bar.valid_domain_count >= ENTRY_DOMAIN_THRESHOLD, (
                 "invariant violated: active_domain_count >= 2 must imply valid_domain_count >= 2 "
                 "(an active domain is, by CrisisDomainReading's own contract, always also valid)"

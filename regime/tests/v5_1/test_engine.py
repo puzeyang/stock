@@ -162,15 +162,48 @@ class TestRealCrisisDomains:
         """The core positive regression test: real CRISIS entry on a real,
         well-documented historical stress episode, verified against real
         pinned VIX/VIX9D/OAS/SPY/Breadth data — the first time in this
-        engine's existence CRISIS can produce a real result at all."""
+        engine's existence CRISIS can produce a real result at all.
+
+        Date range starts at 2018-12-21, not 2018-12-20: under the
+        anchored-entry rule (Messages[232]/[233]/[234]/[236]/[238], human's
+        exact instruction "必须含D2或D3"/"no change"; see
+        `crisis.ANCHOR_DOMAIN_KEYS`), 2018-12-20 is a real, verified
+        D1(volatility)+D4(participation_collapse)-only bar — active_count==2
+        satisfies the CLOSED count alone, but neither D2(credit_stress) nor
+        D3(price_damage) is active that day (confirmed directly against
+        real engine output: only volatility_term_structure and
+        participation_collapse are active on 2018-12-20), so it correctly
+        stays RISK_OFF, not CRISIS. 2018-12-21 has a real D3 confirmation
+        (price_damage active) and is the correct first CRISIS date under
+        the anchored rule."""
         config = self._real_crisis_config()
         state = new_running_engine_state(config)
-        dates = ["2018-12-20", "2018-12-21", "2018-12-24", "2018-12-26", "2018-12-27"]
+        dates = ["2018-12-21", "2018-12-24", "2018-12-26", "2018-12-27"]
         for d in dates:
             record = run_engine_for_date(d, raw_bundle, state, config=config, manifest=manifest)
             assert record["state"] == "CRISIS", f"{d}: expected CRISIS during the real Christmas Eve Massacre"
             assert record["crisis_valid_domain_count"] == 4
             assert record["crisis_active_domain_count"] >= 2
+
+    def test_real_crisis_does_not_fire_on_the_unanchored_2018_12_20_warmup_bar(self, manifest, raw_bundle):
+        """Direct, narrowly-scoped regression test for the anchored-entry
+        rule against real production-path data (not just the synthetic
+        _config() harness in test_crisis.py): 2018-12-20 has
+        active_domain_count==2 (volatility_term_structure +
+        participation_collapse) but neither a credit nor a price-damage
+        confirmation, so it must stay RISK_OFF under the anchored rule,
+        even though it satisfies the CLOSED §9.2/C13 "2-of-4" count alone."""
+        config = self._real_crisis_config()
+        state = new_running_engine_state(config)
+        for d in ["2018-12-17", "2018-12-18", "2018-12-19", "2018-12-20"]:
+            record = run_engine_for_date(d, raw_bundle, state, config=config, manifest=manifest)
+            assert record["state"] != "CRISIS", f"{d}: unexpected CRISIS on a real D1+D4-only warmup bar"
+        status = record["crisis_domain_status"]
+        assert record["crisis_active_domain_count"] == 2
+        assert status["volatility_term_structure"].active is True
+        assert status["participation_collapse"].active is True
+        assert status["credit_stress"].active is False
+        assert status["price_damage"].active is False
 
     def test_real_crisis_does_not_fire_during_a_real_calm_period(self, manifest, raw_bundle):
         """The core negative/false-positive regression test — a real,

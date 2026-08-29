@@ -1993,6 +1993,7 @@ Message[234] - CLAUDE - 2026-08-28T22:44:13-0400 - **All five substantive points
 **Registering the next step per the human's explicit confirmation above ("必须含D2或D3") and Message[233]'s own recommendation**: the `anchored 2-of-4 AND (D2 OR D3)` rule is registered as a named development challenger (not adopted, not frozen) for whenever the prerequisite freezing step (operational CRISIS definition, independently-reviewed labels, continuous-timeline same-day co-occurrence reporting, acceptance metrics) is actually done — alongside `baseline_2of4` and `three_of_four` as comparison points. No code implementing this happens in this message; per Message[233]'s own closing line, there is not yet sufficient evidence to promote it from "promising hypothesis" to any kind of decided topology.
 
 No code changes — review response and record correction. Frozen artifacts unaffected (not touched).
+
 Message[235] - CLAUDE - 2026-08-28T22:51:57-0400 - **Sequencing note, same as Message[232]: inserted before ChatGPT's pending review of Message[234] arrives (`state.json` still names CHATGPT next); the human explicitly asked for this specific finding recorded now, not a preemption of that review. Records a fourth pure exploratory rule the human proposed directly: a state-cap/diagnostic-flag design rather than an exclusion rule.**
 
 **The human's proposed rule** (pseudocode, exact wording preserved): `if active_count >= 2 and not (D2_active or D3_active): state_cap = RISK_OFF; crisis_watch = true; reason_code = "crisis_missing_systemic_anchor"` — otherwise the existing 2-of-4 CRISIS entry is unchanged. Unlike exploration 3 (Message[232]'s "2-of-4 AND must include D2 or D3," which EXCLUDES a D1+D4-only bar from ever contributing to CRISIS entry), this DOWNGRADES such a bar to RISK_OFF with an explicit, named diagnostic reason code — the D1+D4 signal is still surfaced, just not allowed to independently produce the CRISIS label alone.
@@ -2044,3 +2045,59 @@ Message[237] - CLAUDE - 2026-08-28T22:59:09-0400 - **All five points in Message[
 
 No code changes — review response and record correction. Frozen artifacts unaffected (not touched).
 
+Message[238] - CHATGPT - 2026-08-28T23:01:11-0400 - 对 Message[237] 的复核与 blocker resolution：其对 Message[236] 五点的接受基本正确，但“fallback 尚未由 human 选择”的阻塞已由 human 在当前会话中的明确原话解除：`D1+D4-only 时: no change`。结合此前 transcript 中的 `必须含D2或D3` 与 `开发代码，实现功能`，现在已有足够清晰的实施授权与行为边界。
+
+这里的 `no change` 应按 Message[236] 问题的原始范围解释：当系统当前不在 CRISIS，D1+D4-only 不进入 CRISIS，也不强制 cap 到 RISK_OFF，不改变 Condition numeric score，不改变 ordinary categorical state，不增加 downgrade confirmation。普通状态机照常运行。唯一结构变化是 CRISIS entry 从任意2-of-4改为 anchored entry：
+
+```text
+anchored_entry = (
+    valid_domain_count >= 2
+    AND active_domain_count >= 2
+    AND (D2_credit_active OR D3_price_damage_active)
+)
+```
+
+现有 `crisis_watch` 也不应被复用于 D1+D4-only。直接核对 `compute_uncorroborated_veto_diagnostics()` 与设计 §9.2：该字段专门表示“hard veto active、但少于两域确认”，其中0域对应 watch=false、1域对应 watch=true；它不是任意未锚定双域压力的通用告警。human 选择 no change 后，最小实现不新增 `d1d4_unanchored_watch`、不新增 `crisis_missing_systemic_anchor` reason code，也不改变现有 `uncorroborated_veto/crisis_watch` 语义。如未来需要纯 explainability flag，应作为单独 schema proposal，而不能借本次实现扩张范围。
+
+必须同时明确 already-in-CRISIS 的非对称行为：human 的回答针对 Message[236] 明确询问的“D1+D4-only 且未处于CRISIS时”。若已经处于 CRISIS，D1+D4-only 不能立即把 state 降到 RISK_OFF；原有5-bar、4/4 valid、hard-veto-clear、Condition恢复 exit gate继续生效。由于该 bar 仍有两个真实 active domains，保守做法是它不能推进 exit counter（现有 `active_domain_count < 2` 条件自然保证这一点）。这形成合理的 hysteresis：D1+D4不足以从非CRISIS进入，但足以阻止系统宣称压力已消退；若 human 未来希望 exit 也只看 anchored confirmation，那是另一项独立设计变更，本次不包含。
+
+Message[237] 对 provenance 的解释仍不可由共享 transcript 独立验证，但现在无需依赖它所称的外部私有消息：本消息直接逐字记录当前 human 决定，并把它映射到可测试语义。实现者应修改 `CrisisState.advance()` 的 entry predicate或传入明确的 anchored-confirmation布尔值，同时保留 exit predicate不变；不得通过修改全局 `ENTRY_DOMAIN_THRESHOLD` 或给 domain 加权来间接实现。
+
+最低测试集必须覆盖：D1+D4-only 从非CRISIS不进入且普通 state/Condition不被cap；D1+D2、D1+D3、D2+D3、D2+D4、D3+D4在满足其他有效性条件时仍可进入；D1+D4-only 不改变现有 crisis_watch/uncorroborated_veto；already-in-CRISIS 时D1+D4不会强制退出且不会推进 exit counter；4/4-valid exit规则、stub default和现有输出保持不回归。随后再跑完整 v5.1 suite，并把 anchored rule保持在 opt-in/unvalidated配置，不能因实现授权而升级为 production default。
+
+结论：Message[237] 的等待理由已经消失。下一步可以按上述最小范围开发代码；不实现 RISK_OFF cap，不新增 watch语义，不改 exit gate，不打开 production default。
+
+human: next
+
+---
+
+Message[239] - CLAUDE - 2026-08-28T23:24:56-0400 - **实现完成：anchored-entry 规则已落地到 `crisis.py`，按 Message[238] 的最小范围（只改 entry predicate，不动 exit predicate/诊断字段/production default），546/546 v5.1 测试通过（含发现并修复的1个真实回归），冻结产物哈希未变，通过真实 engine 对 8-episode 集重新测得 FPR 从 75%→25%。**
+
+实现范围（`regime/src/v5_1/crisis.py`）：
+1. 新增模块级常量 `ANCHOR_DOMAIN_KEYS = ("credit_stress", "price_damage")`，标注来源为 Messages[232]/[233]/[234]/[236]/[238] 与 human 的原话（"必须含D2或D3"/"no change"）。
+2. `CrisisState.advance()` 的 entry 判断从 `if bar.active_domain_count >= ENTRY_DOMAIN_THRESHOLD:` 改为额外要求 `anchored_confirmation`（D2 或 D3 至少一个 valid 且 active）：
+   ```python
+   anchored_confirmation = any(
+       (reading := bar.domain_status.get(key)) is not None and reading.valid and reading.active
+       for key in ANCHOR_DOMAIN_KEYS
+   )
+   if bar.active_domain_count >= ENTRY_DOMAIN_THRESHOLD and anchored_confirmation:
+       ...
+   ```
+   未修改 `ENTRY_DOMAIN_THRESHOLD` 本身（仍为 CLOSED 的 2），未引入 domain 加权 — 严格按 Message[238] 的禁止事项执行。
+3. exit predicate **未改动**：直接验证（不只是推理）已在 `exit_condition_met` 里的 `active_domain_count < ENTRY_DOMAIN_THRESHOLD` 项本身就能正确处理"已在 CRISIS，回落到 D1+D4-only"的情况——新增的回归测试 `test_d1_d4_only_while_already_in_crisis_does_not_force_exit_or_advance_countdown` 直接断言 `in_crisis` 保持 True 且 `crisis_exit_count` 不推进，不是仅凭代码走查。
+4. 诊断字段（`uncorroborated_veto`/`crisis_watch`，由 `compute_uncorroborated_veto_diagnostics` 计算）完全未改动——新增测试 `test_d1_d4_only_does_not_change_diagnostic_fields` 直接验证 D1+D4-only bar 在 veto=True/False 两种情况下诊断结果与改动前一致。落实 human 对 Message[236] 收尾问题的最终确认答案："no change（什么都不动，只改 CRISIS entry 条件本身）"。
+5. 模块级与方法级 docstring 已更新，引用本次决策链的 Message 编号；不引入任何新的 production-default 提升——`use_real_crisis_domains=True` 依旧是显式 opt-in（`TEST_SCAFFOLDING_CONFIG` 默认值不变，`test_default_config_still_uses_the_stub_unchanged` 保持通过）。
+
+测试：
+- `test_crisis.py` 新增/改写 5 个测试：`test_every_pair_of_domains_enters_crisis_except_the_unanchored_one`（改写自原 golden-vector 测试，明确 vol+participation 现在不进入）、`test_d1_d4_only_does_not_enter_crisis_from_non_crisis`、`test_each_anchored_pair_variant_enters_crisis`、`test_d1_d4_only_does_not_change_diagnostic_fields`、`test_d1_d4_only_while_already_in_crisis_does_not_force_exit_or_advance_countdown`。全部覆盖 Message[238] 列出的最小测试集要求。38/38 通过。
+- 首次跑全量 `regime/tests/v5_1/`（546 项，改动前为 541 项）时发现一个真实回归：`test_engine.py::TestRealCrisisDomains::test_real_crisis_fires_on_the_2018_christmas_eve_massacre` 断言 2018-12-20 应为 CRISIS。直接用真实 engine + 真实 pinned 数据核查（非猜测）：2018-12-20 的 `crisis_domain_status` 显示 `volatility_term_structure=active, participation_collapse=active, credit_stress=inactive, price_damage=inactive`——这正是一个真实的、经生产路径验证的 D1+D4-only bar，`active_domain_count==2` 满足 CLOSED 计数但没有 D2/D3 锚点，anchored 规则下正确保持 RISK_OFF，不是代码 bug。修正：把该测试的日期范围起点从 2018-12-20 改为 2018-12-21（真实 D3 confirmation 生效的第一天），并新增 `test_real_crisis_does_not_fire_on_the_unanchored_2018_12_20_warmup_bar` 直接对这一天做正向断言。修正后 `test_engine.py` 45/45 通过，全量 suite 546/546 通过（0 失败）。
+- 通过真实 engine（而非纯模拟脚本）对 `crisis_validation.py` 的 8-episode 探索性集合重新跑 `run_validation_study`（`use_real_crisis_domains=True`）：recall=100%（4/4 true positive，Wilson CI [0.51, 1.0]），false_positive_rate 从改动前的 75%（Message[229]）降到 25%（1/4 negative episode 仍误报，Wilson CI [0.046, 0.699]，样本量极小，CI 很宽，不做统计显著性宣称）。唯一剩余的误报是 2025-04-04 tariff selloff——与 Message[234]/[236] 已确立的结论一致：那天 D1-D4 四个 domain 公式全部真实 active（含 D2 经由 `level_pct504=94.2` 的相对分位分支），任何仅基于这4个当前二元 flag、且以"4-of-4 sufficient"为兜底的规则变体都无法排除它。这与 Message[232]/[234] 此前用纯模拟脚本得到的预测方向一致，现在是通过真实 engine 集成路径的确认，不是新的独立证据来源（同一 LABELED_EPISODES 集合，同一非-i.i.d. 采样注意事项仍然适用）。
+
+未做（按 Message[238] 明确禁止/未授权的范围）：未新增任何 fallback/watch 语义，未新增诊断字段，未改 `EXIT_BAR_REQUIRED_VALID_DOMAINS`/exit gate，未把 `use_real_crisis_domains=True` 提升为任何 production default，未修改 `ENTRY_DOMAIN_THRESHOLD`，未引入 domain 加权。
+
+冻结产物哈希核对（改动前后一致）：
+- `regime/docs/Freshness_Threshold_Experiment_v1.0.md` = `c5899dfc7359eab220e1aeba070474800f6bf19b49c10e9615597cf3adde9a0a`
+- `regime/schema/freshness_injection_registry.v1.0.json` = `7b4e9697607bc62147b7074949a24d9ad3b1b51f73b91ea37d730d90947047fe`
+
+请求复核：实现范围是否与 Message[238] 的授权边界一致；2018-12-20 测试修正的判断（真实回归 vs. 代码 bug）是否成立；25% FPR 数字与 2025-04-04 语言是否有过度声明。
