@@ -25,7 +25,7 @@ from v5_1.direction import DirectionStructure, DirectionResult  # noqa: E402
 from v5_1.trend_quality import TrendQualityResult  # noqa: E402
 from v5_1.breadth import BreadthResult  # noqa: E402
 from v5_1.risk_appetite import RiskAppetiteResult  # noqa: E402
-from v5_1.stability import StabilityResult  # noqa: E402
+from v5_1.stability import StabilityResult, PriceDamageComponents  # noqa: E402
 from v5_1.condition import ConditionResult  # noqa: E402
 from v5_1.impulse import ImpulseResult  # noqa: E402
 from v5_1.confidence import ConfidenceResult  # noqa: E402
@@ -68,7 +68,9 @@ def _full_risk_appetite_result():
 def _full_stability_result():
     return StabilityResult(
         as_of="2020-04-15", implied_vol_stability=0.7, vol_curve_raw=0.95, vol_curve_stability=0.8,
-        realized_volatility=0.2, realized_vol_stability=0.6, price_damage=0.1, price_stability=0.9,
+        realized_volatility=0.2, realized_vol_stability=0.6,
+        price_damage_components=PriceDamageComponents(benchmark_drawdown=0.1, return_shock_5d=0.05, return_shock_20d=0.08),
+        price_damage=0.1, price_stability=0.9,
         stability_score=0.75,
     )
 

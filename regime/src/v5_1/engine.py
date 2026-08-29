@@ -110,7 +110,7 @@ from .direction import (
 from .trend_quality import TrendQualityWeights, TrendQualityResult, TrendQualityUnavailableError, compute_trend_quality
 from .breadth import BreadthBlendConfig, BreadthResult, BreadthUnavailableError, compute_breadth, compute_participation
 from .risk_appetite import RiskAppetiteWeights, RiskAppetiteResult, RiskAppetiteUnavailableError, compute_risk_appetite
-from .stability import StabilityWeights, StabilityResult, StabilityUnavailableError, compute_stability
+from .stability import StabilityWeights, StabilityResult, StabilityUnavailableError, compute_stability, PriceDamageComponents
 from .condition import (
     PillarWeights, HardVetoRule, SoftCapRule, ConditionResult, ConditionUnavailableError, compute_condition,
 )
@@ -246,7 +246,7 @@ def _realized_vol_stability_transform(raw_level: float) -> float:
 
 def _price_stability_transform(raw_price_damage: float) -> float:
     """price_damage (adverse-positive, already on [0,1] per
-    _drawdown_price_damage_estimator below) -> price_stability
+    _price_damage_composer below) -> price_stability
     (supportive-positive [0,1]). The simplest correct polarity flip: more
     damage -> less stability."""
     return max(0.0, min(1.0, 1.0 - raw_price_damage))
@@ -272,14 +272,35 @@ def _realized_vol_estimator(benchmark_series: RawSeries, as_of: str) -> float | 
     return stdev * (252.0 ** 0.5)
 
 
-def _drawdown_price_damage_estimator(benchmark_series: RawSeries, as_of: str) -> float | None:
+_RETURN_SHOCK_5D_CAP = 0.20   # real-but-simple reference scale, not calibrated (see docstring below)
+_RETURN_SHOCK_20D_CAP = 0.35  # real-but-simple reference scale, not calibrated (see docstring below)
+
+
+def _price_damage_components_estimator(benchmark_series: RawSeries, as_of: str) -> PriceDamageComponents | None:
     """Real (if simple) reference implementation, replacing the earlier
-    fixed-constant stub (Message[189]): drawdown-from-peak magnitude over
-    a trailing 252-session (~1 year) lookback — `(peak - current) / peak`,
-    clipped to [0,1]. Adverse-positive per PriceDamageEstimator's own
-    contract (higher = more damage). Standard, textbook drawdown, not a
-    novel construction. Returns None (fail-closed) if fewer than 252
-    observations exist ending at `as_of`."""
+    single-scalar `_drawdown_price_damage_estimator` (Message[189],
+    itself replaced per Message[225]/[226]/[227]'s discussion-log review):
+    computes THREE independent components in one pass, each `[0,1]`
+    adverse-positive:
+
+    - `benchmark_drawdown`: drawdown-from-peak magnitude over a trailing
+      252-session (~1 year) lookback — `(peak - current) / peak`, clipped
+      to [0,1]. Standard, textbook drawdown, not a novel construction
+      (same formula the old single-scalar estimator used).
+    - `return_shock_5d`/`return_shock_20d`: the magnitude of a NEGATIVE
+      5-session/20-session return, clipped to [0,1] via a real-but-simple
+      reference cap (`_RETURN_SHOCK_5D_CAP=0.20`, `_RETURN_SHOCK_20D_CAP=
+      0.35` — chosen only so Message[211]'s cited D3 thresholds,
+      `return_5d <= -0.07`/`return_20d <= -0.12`, land at a real,
+      non-degenerate point within [0,1] rather than saturating; NOT a
+      calibrated production value, same discipline as `_IMPLIED_VOL_CAP`/
+      `_REALIZED_VOL_CAP` elsewhere in this file). A POSITIVE return
+      contributes zero shock (this measures damage from a decline, not
+      volatility in either direction).
+
+    Returns None (fail-closed) if fewer than 252 observations exist
+    ending at `as_of` (the binding constraint — the longest of the three
+    lookbacks)."""
     window = benchmark_series.window_ending(as_of, 252)
     if window is None:
         return None
@@ -288,8 +309,40 @@ def _drawdown_price_damage_estimator(benchmark_series: RawSeries, as_of: str) ->
     peak = max(closes)
     if peak <= 0:
         return None
-    drawdown = (peak - current) / peak
-    return max(0.0, min(1.0, drawdown))
+    drawdown = max(0.0, min(1.0, (peak - current) / peak))
+
+    close_5d_ago = closes[-6] if len(closes) >= 6 else None
+    close_20d_ago = closes[-21] if len(closes) >= 21 else None
+    if close_5d_ago is None or close_20d_ago is None or close_5d_ago <= 0 or close_20d_ago <= 0:
+        return None
+
+    return_5d = current / close_5d_ago - 1.0
+    return_20d = current / close_20d_ago - 1.0
+    shock_5d = max(0.0, min(1.0, -return_5d / _RETURN_SHOCK_5D_CAP)) if return_5d < 0 else 0.0
+    shock_20d = max(0.0, min(1.0, -return_20d / _RETURN_SHOCK_20D_CAP)) if return_20d < 0 else 0.0
+
+    return PriceDamageComponents(
+        benchmark_drawdown=drawdown, return_shock_5d=shock_5d, return_shock_20d=shock_20d,
+    )
+
+
+def _price_damage_composer(components: PriceDamageComponents) -> float:
+    """Real (if simple) reference implementation: the canonical
+    `price_damage` scalar is the MAXIMUM of the three components — a
+    real, non-arbitrary choice (adverse-positive polarity means "the
+    worst currently-observed signal wins," so a sharp 5-day shock that
+    hasn't yet shown up in the slower 252-session drawdown still drives
+    `price_damage` up immediately, and vice versa) rather than an
+    unweighted average, which would let a severe short-term shock get
+    diluted by two calmer, slower-moving components. NOT a calibrated
+    production formula — a real-but-simple composition rule, same
+    discipline as every other EMPIRICAL formula in this file. How this
+    composer's output should feed the single manifest-declared
+    `benchmark_return_shock` field (a composition of JUST the two shock
+    components, distinct from this function's THREE-component
+    price_damage composition) remains a separate, explicitly still-open
+    choice per Message[227] — not resolved by this function."""
+    return max(components.benchmark_drawdown, components.return_shock_5d, components.return_shock_20d)
 
 
 def _stub_scale_estimator(raw_change: float) -> float:
@@ -478,43 +531,68 @@ def _d2_credit_stress_evaluator(oas_series: RawSeries):
     return _ev
 
 
-# D3: price damage — MUST reuse the SAME canonical `price_damage` value
+# D3: price damage — MUST reuse the SAME canonical `PriceDamageComponents`
 # Stability already computed this invocation, per `compute_stability`'s
 # own explicit MUST ("never call the estimator again independently") and
 # `CrisisEvaluationContext`'s docstring. This evaluator does NOT recompute
-# drawdown itself — the corrected design after Message[213]'s retracted
-# "call the estimator directly" error and Message[216]'s follow-up fix.
-# Only the `dd_stress`/`extreme`-via-drawdown half of Message[211]'s
-# original D3 design is implementable against the CURRENT canonical
-# `price_damage` interface (a single [0,1] drawdown-magnitude scalar, no
-# return_5d/return_20d fields per Message[215]'s verification) — the
-# `shock_stress`/return-based half of Message[211]'s design is NOT
-# implemented here, since it would require extending the canonical
-# price_damage contract itself first (out of scope for this message; the
-# 5-day/20-day return-shock sub-conditions are simply omitted, not
-# silently approximated).
+# drawdown/return-shock itself — the corrected design after Message[213]'s
+# retracted "call the estimator directly" error, Message[216]'s follow-up
+# fix, and Message[225]/[226]/[227]'s canonical-components-contract
+# extension (which finally makes the FULL Message[211] D3 design
+# implementable, including the shock_stress/trend_damage sub-conditions
+# that were previously omitted for lack of a return_5d/return_20d field
+# on the canonical interface).
+#
+# Thresholds below are Message[211] §五's exact baseline preset
+# (`dd_stress<=-12%`, `shock_stress(5d)<=-7%`, `trend_damage(20d)<=-12%`,
+# `extreme=(drawdown<=-20%) OR (5d<=-12%)`), re-expressed in the
+# normalized [0,1] scale `_price_damage_components_estimator` actually
+# produces (drawdown is already a raw fraction, no rescaling; the two
+# shock components are the raw percentage divided by their own cap —
+# `_RETURN_SHOCK_5D_CAP=0.20`, `_RETURN_SHOCK_20D_CAP=0.35` — so e.g.
+# Message[211]'s real "-7% on 5 days" becomes `0.07/0.20 = 0.35` on this
+# evaluator's own normalized scale). Real preset value, still NOT a
+# calibrated production threshold — same discipline as D1/D2/D4.
 _D3_DRAWDOWN_STRESS_THRESHOLD = 0.12
+_D3_SHOCK_5D_STRESS_THRESHOLD = 0.07 / _RETURN_SHOCK_5D_CAP
+_D3_TREND_DAMAGE_20D_THRESHOLD = 0.12 / _RETURN_SHOCK_20D_CAP
 _D3_EXTREME_DRAWDOWN = 0.20
+_D3_EXTREME_SHOCK_5D = 0.12 / _RETURN_SHOCK_5D_CAP
 
 
 def _d3_price_damage_evaluator():
-    """D3: reads `context.price_damage` (the canonical value, already
-    computed once by `compute_stability` this invocation) — never its own
-    independent drawdown calculation. `price_damage` is already a [0,1]
-    adverse-positive scalar (higher = more damage) per its own contract,
-    so no further transform is needed here, only threshold comparison."""
+    """D3: reads `context.price_damage_components` (the canonical
+    components, already computed once by `compute_stability` this
+    invocation) — never its own independent drawdown/return-shock
+    calculation. Each component is already a [0,1] adverse-positive
+    value per `PriceDamageComponents`' own contract, so no further
+    transform is needed here, only threshold comparison, matching
+    Message[211] §五's exact `dd_stress`/`shock_stress`/`trend_damage`/
+    `extreme` structure."""
     def _ev(context: CrisisEvaluationContext) -> CrisisDomainReading:
-        if context.price_damage is None:
+        if context.price_damage_components is None:
             return CrisisDomainReading(valid=False, active=False, reason_codes=("canonical_price_damage_unavailable",))
 
-        dd_stress = context.price_damage >= _D3_DRAWDOWN_STRESS_THRESHOLD
-        extreme = context.price_damage >= _D3_EXTREME_DRAWDOWN
+        components = context.price_damage_components
+        dd_stress = components.benchmark_drawdown >= _D3_DRAWDOWN_STRESS_THRESHOLD
+        shock_stress = components.return_shock_5d >= _D3_SHOCK_5D_STRESS_THRESHOLD
+        trend_damage = components.return_shock_20d >= _D3_TREND_DAMAGE_20D_THRESHOLD
+        extreme = (
+            components.benchmark_drawdown >= _D3_EXTREME_DRAWDOWN
+            or components.return_shock_5d >= _D3_EXTREME_SHOCK_5D
+        )
         reasons = []
         if dd_stress:
             reasons.append("dd_stress")
+        if shock_stress:
+            reasons.append("shock_stress")
+        if trend_damage:
+            reasons.append("trend_damage")
         if extreme:
             reasons.append("extreme")
-        return CrisisDomainReading(valid=True, active=dd_stress, reason_codes=tuple(reasons))
+
+        active = extreme or sum([dd_stress, shock_stress, trend_damage]) >= 2
+        return CrisisDomainReading(valid=True, active=active, reason_codes=tuple(reasons))
     return _ev
 
 
@@ -977,7 +1055,7 @@ def run_engine_for_date(
         stability_result = compute_stability(
             as_of, raw.vix, raw.vix9d, raw.benchmark,
             _implied_vol_stability_transform, _vol_curve_stability_transform, _realized_vol_stability_transform,
-            _realized_vol_estimator, _drawdown_price_damage_estimator, _price_stability_transform,
+            _realized_vol_estimator, _price_damage_components_estimator, _price_damage_composer, _price_stability_transform,
             config.stability_weights,
         )
     except StabilityUnavailableError:
@@ -1028,7 +1106,7 @@ def run_engine_for_date(
         )
     crisis_bar = evaluate_crisis_bar(
         as_of, crisis_domain_config,
-        price_damage=stability_result.price_damage if stability_result is not None else None,
+        price_damage_components=stability_result.price_damage_components if stability_result is not None else None,
     )
     exit_ctx = ConditionForExit(
         condition_score=condition_result.condition_score if condition_result is not None else None,
@@ -1076,6 +1154,21 @@ def run_engine_for_date(
     veto_diagnostics = compute_uncorroborated_veto_diagnostics(crisis_bar.active_domain_count, any_hard_veto_active)
 
     # --- Output Assembly (4.12) ---
+    # benchmark_drawdown/benchmark_return_shock: manifest-declared
+    # explainability fields (role="explainability", per Message[225]'s
+    # finding) that no prior code populated. benchmark_drawdown reads
+    # straight through StabilityResult's own property. benchmark_
+    # return_shock's exact 5d/20d composition rule remains an explicitly
+    # open EMPIRICAL choice (Message[227]) — reusing the same real-but-
+    # simple "maximum of the components" rule _price_damage_composer
+    # already uses for price_damage itself (not a new, separately
+    # invented formula), clearly non-final, rather than leaving a real,
+    # now-computable value silently None.
+    benchmark_return_shock = None
+    if stability_result is not None:
+        components = stability_result.price_damage_components
+        benchmark_return_shock = max(components.return_shock_5d, components.return_shock_20d)
+
     return assemble_output(
         as_of, manifest.raw["schema_version"], manifest.raw["feature_contract_version"],
         "OK" if condition_result is not None else "DEGRADED",
@@ -1088,6 +1181,8 @@ def run_engine_for_date(
         crisis_watch=veto_diagnostics.crisis_watch,
         uncorroborated_veto=veto_diagnostics.uncorroborated_veto,
         crisis_exit_count=running_state.state_machine.crisis.crisis_exit_count,
+        benchmark_drawdown=stability_result.benchmark_drawdown if stability_result is not None else None,
+        benchmark_return_shock=benchmark_return_shock,
     )
 
 

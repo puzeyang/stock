@@ -28,6 +28,7 @@ from v5_1.crisis import (  # noqa: E402
     ENTRY_DOMAIN_THRESHOLD,
     EXIT_BAR_REQUIRED_VALID_DOMAINS,
 )
+from v5_1.stability import PriceDamageComponents  # noqa: E402
 
 
 def _const_domain(valid: bool, active: bool, reason_codes: tuple[str, ...] = ()):
@@ -303,8 +304,9 @@ class TestCrisisExit:
 class TestCrisisEvaluationContext:
     def test_evaluators_receive_a_context_not_a_bare_string(self):
         """Direct check that the Protocol shape really changed — an
-        evaluator that inspects its argument's .as_of/.price_damage
-        attributes (rather than treating it as a bare str) must work."""
+        evaluator that inspects its argument's .as_of/.price_damage_
+        components attributes (rather than treating it as a bare str)
+        must work."""
         received = []
 
         def _capturing_evaluator(context: CrisisEvaluationContext):
@@ -317,21 +319,22 @@ class TestCrisisEvaluationContext:
             price_damage=_const_domain(True, False),
             participation_collapse=_const_domain(True, False),
         )
-        evaluate_crisis_bar("2020-03-20", config, price_damage=0.42)
+        components = PriceDamageComponents(benchmark_drawdown=0.42, return_shock_5d=0.1, return_shock_20d=0.2)
+        evaluate_crisis_bar("2020-03-20", config, price_damage_components=components)
         assert len(received) == 1
         assert received[0].as_of == "2020-03-20"
-        assert received[0].price_damage == 0.42
+        assert received[0].price_damage_components == components
 
-    def test_price_damage_is_passed_identically_to_all_four_evaluators(self):
-        """Every domain gets the SAME context object's price_damage,
-        even domains that don't use it — the shared-context design's
-        whole point (Message[218]) is uniform delivery, not per-domain
-        routing."""
+    def test_price_damage_components_is_passed_identically_to_all_four_evaluators(self):
+        """Every domain gets the SAME context object's
+        price_damage_components, even domains that don't use it — the
+        shared-context design's whole point (Message[218]) is uniform
+        delivery, not per-domain routing."""
         seen_values = []
 
         def _make_capturing(name):
             def _ev(context: CrisisEvaluationContext):
-                seen_values.append((name, context.price_damage))
+                seen_values.append((name, context.price_damage_components))
                 return CrisisDomainReading(valid=True, active=False)
             return _ev
 
@@ -341,20 +344,22 @@ class TestCrisisEvaluationContext:
             price_damage=_make_capturing("price"),
             participation_collapse=_make_capturing("participation"),
         )
-        evaluate_crisis_bar("2020-03-20", config, price_damage=0.75)
+        components = PriceDamageComponents(benchmark_drawdown=0.75, return_shock_5d=0.3, return_shock_20d=0.4)
+        evaluate_crisis_bar("2020-03-20", config, price_damage_components=components)
         assert seen_values == [
-            ("vol", 0.75), ("credit", 0.75), ("price", 0.75), ("participation", 0.75),
+            ("vol", components), ("credit", components), ("price", components), ("participation", components),
         ]
 
-    def test_price_damage_defaults_to_none_for_backward_compatible_callers(self):
-        """A caller not yet passing price_damage (e.g. synthetic-fixture
-        tests exercising only D1/D2/D4) must not be forced to supply
-        one — defaults to None, exactly the same "unavailable" signal a
-        real missing Stability value would produce."""
+    def test_price_damage_components_defaults_to_none_for_backward_compatible_callers(self):
+        """A caller not yet passing price_damage_components (e.g.
+        synthetic-fixture tests exercising only D1/D2/D4) must not be
+        forced to supply one — defaults to None, exactly the same
+        "unavailable" signal a real missing Stability value would
+        produce."""
         captured = {}
 
         def _capture(context: CrisisEvaluationContext):
-            captured["price_damage"] = context.price_damage
+            captured["price_damage_components"] = context.price_damage_components
             return CrisisDomainReading(valid=True, active=False)
 
         config = CrisisDomainConfig(
@@ -363,8 +368,8 @@ class TestCrisisEvaluationContext:
             price_damage=_const_domain(True, False),
             participation_collapse=_const_domain(True, False),
         )
-        evaluate_crisis_bar("2020-03-20", config)  # no price_damage kwarg
-        assert captured["price_damage"] is None
+        evaluate_crisis_bar("2020-03-20", config)  # no price_damage_components kwarg
+        assert captured["price_damage_components"] is None
 
 
 # ---------------------------------------------------------------------------

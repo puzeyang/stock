@@ -57,6 +57,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
+from .stability import PriceDamageComponents
+
 EXIT_CONFIRMATION_BARS = 5  # CLOSED (§9.3): "five consecutive valid bars", not EMPIRICAL.
 ENTRY_DOMAIN_THRESHOLD = 2  # CLOSED (§9.2/C13): "2-of-4", not EMPIRICAL.
 EXIT_BAR_REQUIRED_VALID_DOMAINS = 4  # human-decided (Message[220]/[221]/[223], not an original v5.1 design-doc CLOSED value): each exit-confirmation bar must have ALL FOUR domains valid, not merely "fewer than two active" — closes the gap where an unavailable domain (e.g. D3's price_damage=None) is indistinguishable from an observed-calm domain under the entry-side ENTRY_DOMAIN_THRESHOLD check alone (design §9.2's "Missing/stale is unavailable, never calm or stressed" applied to exit, not just entry). Most conservative option of the ones discussed; the human explicitly chose it over a lower/data-driven threshold.
@@ -97,19 +99,26 @@ class CrisisEvaluationContext:
     single domain can receive a parameter the others don't; domains that
     don't need `price_damage` (D1/D2/D4) simply ignore it.
 
-    `price_damage` carries the SAME canonical value `compute_stability`
-    already computed this invocation (`StabilityResult.price_damage`) —
-    per that function's own explicit MUST ("callers needing price_damage
-    elsewhere (CRISIS, diagnostics) MUST reuse this same returned
-    price_damage value, never call the estimator again independently"),
-    the price-damage domain evaluator (D3) MUST read this field, never
-    recompute its own drawdown/return-shock measures. `None` if Stability
-    (and therefore the canonical price_damage) was itself unavailable
-    this bar — D3 must then return `valid=False` with a
+    `price_damage_components` carries the SAME canonical
+    `PriceDamageComponents` instance `compute_stability` already computed
+    this invocation (`StabilityResult.price_damage_components`) — per
+    `compute_stability`'s own explicit MUST ("callers needing any
+    price-damage component elsewhere (CRISIS, diagnostics) MUST reuse
+    this same returned `PriceDamageComponents` instance, never call the
+    estimator again independently"), the price-damage domain evaluator
+    (D3) MUST read this field, never recompute its own drawdown/
+    return-shock measures. Per the human's explicit decision
+    (Message[227]), D3 reads the raw `benchmark_drawdown`/
+    `return_shock_5d`/`return_shock_20d` components directly (needed
+    since Message[211]'s D3 design uses independent 5-day/20-day
+    thresholds a single composed scalar cannot represent) — NOT only the
+    composed `price_damage` scalar every other consumer uses. `None` if
+    Stability (and therefore the canonical components) was itself
+    unavailable this bar — D3 must then return `valid=False` with a
     `canonical_price_damage_unavailable` reason code, per Message[221]."""
 
     as_of: str
-    price_damage: float | None
+    price_damage_components: "PriceDamageComponents | None"
 
 
 class CrisisDomainEvaluator(Protocol):
@@ -157,7 +166,9 @@ class CrisisBarEvaluation:
     active_domain_count: int
 
 
-def evaluate_crisis_bar(as_of: str, config: CrisisDomainConfig, price_damage: float | None = None) -> CrisisBarEvaluation:
+def evaluate_crisis_bar(
+    as_of: str, config: CrisisDomainConfig, price_damage_components: "PriceDamageComponents | None" = None,
+) -> CrisisBarEvaluation:
     """Evaluate all four CRISIS domains for one bar. `valid_domain_count`
     counts domains where `valid=True` (regardless of active/inactive);
     `active_domain_count` counts domains where BOTH `valid=True` AND
@@ -165,21 +176,25 @@ def evaluate_crisis_bar(as_of: str, config: CrisisDomainConfig, price_damage: fl
     active or an inactive tally, per §9.2's "missing/stale is unavailable,
     never calm or stressed."
 
-    `price_damage` (added per Message[218]/[219]/[221]) is the SAME
-    canonical value the caller's own `compute_stability` invocation
-    already computed this bar (`StabilityResult.price_damage`, or `None`
-    if Stability was itself unavailable) — passed through unchanged into
-    a shared `CrisisEvaluationContext` given identically to all four
-    domain evaluators, per `CrisisEvaluationContext`'s own docstring. D1/
-    D2/D4 are free to ignore it; only D3 (price damage) is expected to
-    read it. Defaults to `None` for backward compatibility with any
-    caller not yet passing a real value (e.g. synthetic-fixture tests
-    exercising D1/D2/D4 only) — a `None` here simply means D3 (if
-    present in `config`) will see `context.price_damage is None` and
-    must handle that as its own unavailability case, exactly as it would
-    for a real missing value.
+    `price_damage_components` (added per Message[218]/[219]/[221], shape
+    updated per Message[225]/[226]/[227]) is the SAME canonical
+    `PriceDamageComponents` instance the caller's own `compute_stability`
+    invocation already computed this bar (`StabilityResult.
+    price_damage_components`, or `None` if Stability was itself
+    unavailable) — passed through unchanged into a shared
+    `CrisisEvaluationContext` given identically to all four domain
+    evaluators, per `CrisisEvaluationContext`'s own docstring. D1/D2/D4
+    are free to ignore it; only D3 (price damage) is expected to read it,
+    and reads the raw components directly per the human's decision
+    (Message[227]), not a composed scalar. Defaults to `None` for
+    backward compatibility with any caller not yet passing a real value
+    (e.g. synthetic-fixture tests exercising D1/D2/D4 only) — a `None`
+    here simply means D3 (if present in `config`) will see
+    `context.price_damage_components is None` and must handle that as
+    its own unavailability case, exactly as it would for a real missing
+    value.
     """
-    context = CrisisEvaluationContext(as_of=as_of, price_damage=price_damage)
+    context = CrisisEvaluationContext(as_of=as_of, price_damage_components=price_damage_components)
     status: dict[str, CrisisDomainReading] = {}
     valid_count = 0
     active_count = 0

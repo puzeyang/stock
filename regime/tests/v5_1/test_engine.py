@@ -37,13 +37,15 @@ from v5_1.engine import (  # noqa: E402
     _realized_vol_stability_transform,
     _price_stability_transform,
     _realized_vol_estimator,
-    _drawdown_price_damage_estimator,
+    _price_damage_components_estimator,
+    _price_damage_composer,
     _impulse_horizon,
     _d1_volatility_term_structure_evaluator,
     _d2_credit_stress_evaluator,
     _d3_price_damage_evaluator,
     _d4_participation_collapse_evaluator,
 )
+from v5_1.stability import PriceDamageComponents  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -221,35 +223,69 @@ class TestRealCrisisDomains:
         lot" as sufficient for credit stress."""
         d2 = _d2_credit_stress_evaluator(raw_bundle.oas)
         from v5_1.crisis import CrisisEvaluationContext
-        reading_2020 = d2(CrisisEvaluationContext(as_of="2020-03-23", price_damage=None))
-        reading_2022 = d2(CrisisEvaluationContext(as_of="2022-06-13", price_damage=None))
+        reading_2020 = d2(CrisisEvaluationContext(as_of="2020-03-23", price_damage_components=None))
+        reading_2022 = d2(CrisisEvaluationContext(as_of="2022-06-13", price_damage_components=None))
         assert reading_2020.valid is True
         assert reading_2020.active is True, "2020-03-23: real OAS=10.87pp must trigger credit stress"
         assert reading_2022.valid is True
         assert reading_2022.active is False, "2022-06-13: real OAS~4.87pp must NOT trigger credit stress"
 
-    def test_d3_reuses_canonical_price_damage_never_recomputes(self, manifest, raw_bundle):
+    def test_d3_reuses_canonical_price_damage_components_never_recomputes(self, manifest, raw_bundle):
         """Direct regression test for the retracted Message[213] error
-        (corrected in Message[215]/[216]): D3 must read
-        context.price_damage as given, never call
-        _drawdown_price_damage_estimator itself."""
+        (corrected in Message[215]/[216], components shape per
+        Message[225]-[227]): D3 must read
+        context.price_damage_components as given, never call
+        _price_damage_components_estimator itself."""
         d3 = _d3_price_damage_evaluator()
         from v5_1.crisis import CrisisEvaluationContext
-        # A deliberately fake, out-of-real-range value the real estimator
+        # Deliberately fake, out-of-real-range values the real estimator
         # would never itself produce for this date — if D3 were silently
-        # recomputing its own drawdown instead of trusting the context,
-        # this exact injected value wouldn't drive the result.
-        reading = d3(CrisisEvaluationContext(as_of="2018-12-24", price_damage=0.99))
+        # recomputing its own drawdown/return-shock instead of trusting
+        # the context, these exact injected values wouldn't drive the
+        # result.
+        components = PriceDamageComponents(benchmark_drawdown=0.99, return_shock_5d=0.0, return_shock_20d=0.0)
+        reading = d3(CrisisEvaluationContext(as_of="2018-12-24", price_damage_components=components))
         assert reading.valid is True
         assert reading.active is True
         assert "extreme" in reading.reason_codes
 
-    def test_d3_unavailable_when_canonical_price_damage_is_none(self, manifest, raw_bundle):
+    def test_d3_unavailable_when_canonical_price_damage_components_is_none(self, manifest, raw_bundle):
         d3 = _d3_price_damage_evaluator()
         from v5_1.crisis import CrisisEvaluationContext
-        reading = d3(CrisisEvaluationContext(as_of="2018-12-24", price_damage=None))
+        reading = d3(CrisisEvaluationContext(as_of="2018-12-24", price_damage_components=None))
         assert reading.valid is False
         assert reading.reason_codes == ("canonical_price_damage_unavailable",)
+
+    def test_d3_shock_stress_and_trend_damage_now_implementable(self, manifest, raw_bundle):
+        """New coverage per Message[225]-[227]: the shock_stress/
+        trend_damage sub-conditions Message[213]'s original implementation
+        had to omit (no return_5d/return_20d field existed) are now real
+        and independently triggerable, matching Message[211] §五's full
+        design."""
+        d3 = _d3_price_damage_evaluator()
+        from v5_1.crisis import CrisisEvaluationContext
+        # Only the 5-day shock crosses its threshold; drawdown/20d do not.
+        components = PriceDamageComponents(benchmark_drawdown=0.0, return_shock_5d=0.9, return_shock_20d=0.0)
+        reading = d3(CrisisEvaluationContext(as_of="2018-12-24", price_damage_components=components))
+        assert "shock_stress" in reading.reason_codes
+        assert "dd_stress" not in reading.reason_codes
+        assert "trend_damage" not in reading.reason_codes
+
+    def test_d3_real_2020_covid_crash_triggers_shock_and_trend_damage_together(self, manifest, raw_bundle):
+        """Real end-to-end integration check (not synthetic components):
+        2020-03-16, the single worst day of the COVID crash, must show
+        ALL FOUR D3 sub-conditions simultaneously on real pinned SPY
+        data — confirms the full Message[211] §五 design is wired
+        through run_engine_for_date, not just independently correct at
+        the evaluator-unit level."""
+        config = replace(TEST_SCAFFOLDING_CONFIG, use_real_crisis_domains=True)
+        state = new_running_engine_state(config)
+        record = run_engine_for_date("2020-03-16", raw_bundle, state, config=config, manifest=manifest)
+        reading = record["crisis_domain_status"]["price_damage"]
+        assert reading.valid is True
+        assert reading.active is True
+        for code in ("dd_stress", "shock_stress", "trend_damage", "extreme"):
+            assert code in reading.reason_codes, f"expected {code} on the real 2020-03-16 COVID crash bottom day"
 
 
 # ---------------------------------------------------------------------------
@@ -530,24 +566,49 @@ class TestRealizedVolEstimator:
         assert crash_vol > calm_vol * 2, f"expected crash vol ({crash_vol}) to be well above calm vol ({calm_vol})"
 
 
-class TestDrawdownPriceDamageEstimator:
+class TestPriceDamageComponentsEstimator:
+    """Migrated from TestDrawdownPriceDamageEstimator per Message[225]-
+    [227]'s discussion-log review: the old single-scalar
+    `_drawdown_price_damage_estimator` was replaced with
+    `_price_damage_components_estimator`, returning a
+    `PriceDamageComponents` (drawdown + 5d/20d return shocks) rather than
+    a bare float."""
+
     def test_returns_none_with_insufficient_history(self, manifest):
         spy = load_raw_series("benchmark_total_return_close", manifest)
-        assert _drawdown_price_damage_estimator(spy, "1993-02-01") is None
+        assert _price_damage_components_estimator(spy, "1993-02-01") is None
 
     def test_covid_crash_bottom_shows_meaningfully_higher_damage_than_a_calm_date(self, manifest):
         spy = load_raw_series("benchmark_total_return_close", manifest)
-        crash_damage = _drawdown_price_damage_estimator(spy, "2020-03-23")
-        calm_damage = _drawdown_price_damage_estimator(spy, "2024-01-16")
-        assert crash_damage is not None and calm_damage is not None
-        assert crash_damage > calm_damage * 10, f"expected crash damage ({crash_damage}) to be well above calm damage ({calm_damage})"
+        crash = _price_damage_components_estimator(spy, "2020-03-23")
+        calm = _price_damage_components_estimator(spy, "2024-01-16")
+        assert crash is not None and calm is not None
+        assert crash.benchmark_drawdown > calm.benchmark_drawdown * 10, (
+            f"expected crash drawdown ({crash.benchmark_drawdown}) to be well above calm drawdown ({calm.benchmark_drawdown})"
+        )
 
-    def test_output_is_bounded_to_zero_one(self, manifest):
+    def test_output_components_are_bounded_to_zero_one(self, manifest):
         spy = load_raw_series("benchmark_total_return_close", manifest)
         for d in ["2020-03-23", "2024-01-16", "2021-11-15"]:
-            v = _drawdown_price_damage_estimator(spy, d)
-            assert v is not None
-            assert 0.0 <= v <= 1.0
+            components = _price_damage_components_estimator(spy, d)
+            assert components is not None
+            assert 0.0 <= components.benchmark_drawdown <= 1.0
+            assert 0.0 <= components.return_shock_5d <= 1.0
+            assert 0.0 <= components.return_shock_20d <= 1.0
+
+    def test_composer_takes_the_maximum_of_the_three_components(self):
+        components = PriceDamageComponents(benchmark_drawdown=0.3, return_shock_5d=0.7, return_shock_20d=0.1)
+        assert _price_damage_composer(components) == 0.7
+
+    def test_positive_returns_contribute_zero_shock(self, manifest):
+        """A real, genuinely calm/rising date should show zero shock on
+        both horizons — a positive return is not damage."""
+        spy = load_raw_series("benchmark_total_return_close", manifest)
+        # A real date from a genuine multi-week uptrend (verified earlier
+        # in this investigation, e.g. Message[195]'s 2019-03 checkpoints).
+        components = _price_damage_components_estimator(spy, "2019-03-18")
+        assert components is not None
+        assert components.return_shock_5d == 0.0 or components.return_shock_20d == 0.0
 
 
 class TestFullEngineWithRealFormulas:

@@ -23,6 +23,7 @@ from v5_1.stability import (  # noqa: E402
     StabilityWeights,
     StabilityUnavailableError,
     StabilityResult,
+    PriceDamageComponents,
 )
 
 
@@ -65,11 +66,21 @@ def _stub_realized_vol(benchmark_series, as_of):
     return 0.2  # fixed placeholder
 
 
-def _stub_price_damage(benchmark_series, as_of):
+def _stub_price_damage_components(benchmark_series, as_of):
+    """Migrated per Message[225]-[227]'s discussion-log review: the old
+    single-scalar `PriceDamageEstimator` stub is replaced with the
+    two-step `PriceDamageComponentsEstimator`/`PriceDamageComposer`
+    shape. Deliberately-fake, out-of-[0,1]-range placeholder values
+    (matching this suite's existing convention for every other stub),
+    proving the injection seam rather than asserting a real formula."""
     v = benchmark_series.value_on(as_of)
     if v is None:
         return None
-    return 5.0  # fixed placeholder
+    return PriceDamageComponents(benchmark_drawdown=5.0, return_shock_5d=3.0, return_shock_20d=4.0)
+
+
+def _stub_price_damage_composer(components):
+    return components.benchmark_drawdown  # obviously-fake: ignores the other two components
 
 
 def _default_weights():
@@ -125,7 +136,7 @@ class TestFullComputationRealData:
         r = compute_stability(
             "2020-04-15", vix_series, vix9d_series, spy_series,
             _stub_monotone_decreasing, _stub_monotone_decreasing, _stub_monotone_decreasing,
-            _stub_realized_vol, _stub_price_damage, _stub_monotone_decreasing,
+            _stub_realized_vol, _stub_price_damage_components, _stub_price_damage_composer, _stub_monotone_decreasing,
             _default_weights(),
         )
         assert isinstance(r, StabilityResult)
@@ -143,19 +154,19 @@ class TestFullComputationRealData:
             compute_stability(
                 "1900-01-01", vix_series, vix9d_series, spy_series,
                 _stub_monotone_decreasing, _stub_monotone_decreasing, _stub_monotone_decreasing,
-                _stub_realized_vol, _stub_price_damage, _stub_monotone_decreasing,
+                _stub_realized_vol, _stub_price_damage_components, _stub_price_damage_composer, _stub_monotone_decreasing,
                 _default_weights(),
             )
 
-    def test_unavailable_when_price_damage_estimator_returns_none(self, vix_series, vix9d_series, spy_series):
+    def test_unavailable_when_price_damage_components_estimator_returns_none(self, vix_series, vix9d_series, spy_series):
         def _always_unavailable(series, as_of):
             return None
 
-        with pytest.raises(StabilityUnavailableError, match="price_damage unavailable"):
+        with pytest.raises(StabilityUnavailableError, match="price_damage_components unavailable"):
             compute_stability(
                 "2020-04-15", vix_series, vix9d_series, spy_series,
                 _stub_monotone_decreasing, _stub_monotone_decreasing, _stub_monotone_decreasing,
-                _stub_realized_vol, _always_unavailable, _stub_monotone_decreasing,
+                _stub_realized_vol, _always_unavailable, _stub_price_damage_composer, _stub_monotone_decreasing,
                 _default_weights(),
             )
 
@@ -179,13 +190,13 @@ class TestFullComputationRealData:
         r_baseline = compute_stability(
             "2020-04-15", vix_series, vix9d_series, spy_series,
             _stub_monotone_decreasing, _stub_monotone_decreasing, _stub_monotone_decreasing,
-            _stub_realized_vol, _stub_price_damage, _stub_monotone_decreasing,
+            _stub_realized_vol, _stub_price_damage_components, _stub_price_damage_composer, _stub_monotone_decreasing,
             _default_weights(),
         )
         r_perturbed = compute_stability(
             "2020-04-15", vix_series, vix9d_series, spy_series,
             _perturbed_implied_vol_transform, _stub_monotone_decreasing, _stub_monotone_decreasing,
-            _stub_realized_vol, _stub_price_damage, _stub_monotone_decreasing,
+            _stub_realized_vol, _stub_price_damage_components, _stub_price_damage_composer, _stub_monotone_decreasing,
             _default_weights(),
         )
         assert r_perturbed.implied_vol_stability != r_baseline.implied_vol_stability  # the perturbed domain DID change
@@ -204,9 +215,65 @@ class TestFullComputationRealData:
             compute_stability(
                 "2020-04-15", vix_series, vix9d_series, spy_series,
                 _stub_monotone_decreasing, _stub_monotone_decreasing, _stub_monotone_decreasing,
-                _always_unavailable, _stub_price_damage, _stub_monotone_decreasing,
+                _always_unavailable, _stub_price_damage_components, _stub_price_damage_composer, _stub_monotone_decreasing,
                 _default_weights(),
             )
+
+
+# ---------------------------------------------------------------------------
+# PriceDamageComponents / composer (Message[225]-[227]'s discussion-log
+# review): benchmark_drawdown and benchmark_return_shock were already
+# declared manifest/schema fields (role="explainability") that no code
+# ever populated — these tests verify the two-step "compute components
+# once, compose separately" contract is actually real, not just present
+# in the type signature.
+# ---------------------------------------------------------------------------
+
+class TestPriceDamageComponents:
+    def test_result_carries_the_same_components_instance_estimator_returned(self, vix_series, vix9d_series, spy_series):
+        """`StabilityResult.price_damage_components` must be the EXACT
+        object `price_damage_components_estimator` returned, not a copy
+        or a re-derivation — direct proof of the "computed once, shared"
+        discipline `compute_stability`'s own docstring requires."""
+        sentinel = PriceDamageComponents(benchmark_drawdown=0.11, return_shock_5d=0.22, return_shock_20d=0.33)
+
+        def _returns_sentinel(series, as_of):
+            return sentinel
+
+        r = compute_stability(
+            "2020-04-15", vix_series, vix9d_series, spy_series,
+            _stub_monotone_decreasing, _stub_monotone_decreasing, _stub_monotone_decreasing,
+            _stub_realized_vol, _returns_sentinel, _stub_price_damage_composer, _stub_monotone_decreasing,
+            _default_weights(),
+        )
+        assert r.price_damage_components is sentinel
+
+    def test_benchmark_drawdown_property_reads_through_to_components(self, vix_series, vix9d_series, spy_series):
+        r = compute_stability(
+            "2020-04-15", vix_series, vix9d_series, spy_series,
+            _stub_monotone_decreasing, _stub_monotone_decreasing, _stub_monotone_decreasing,
+            _stub_realized_vol, _stub_price_damage_components, _stub_price_damage_composer, _stub_monotone_decreasing,
+            _default_weights(),
+        )
+        assert r.benchmark_drawdown == r.price_damage_components.benchmark_drawdown
+        assert r.benchmark_drawdown == 5.0  # the stub's fixed placeholder value
+
+    def test_composer_is_a_separate_step_from_the_components_estimator(self, vix_series, vix9d_series, spy_series):
+        """A composer that ignores the components estimator's actual
+        output entirely (returns a constant) must still drive
+        price_damage — proving the two are genuinely independent
+        callables, not one function secretly doing both jobs."""
+        def _constant_composer(components):
+            return 0.5
+
+        r = compute_stability(
+            "2020-04-15", vix_series, vix9d_series, spy_series,
+            _stub_monotone_decreasing, _stub_monotone_decreasing, _stub_monotone_decreasing,
+            _stub_realized_vol, _stub_price_damage_components, _constant_composer, _stub_monotone_decreasing,
+            _default_weights(),
+        )
+        assert r.price_damage == 0.5
+        assert r.price_damage_components.benchmark_drawdown == 5.0  # components unaffected by the composer swap
 
 
 # ---------------------------------------------------------------------------
@@ -314,13 +381,13 @@ class TestDeterministicReplay:
         r1 = compute_stability(
             "2020-04-15", vix_series, vix9d_series, spy_series,
             _stub_monotone_decreasing, _stub_monotone_decreasing, _stub_monotone_decreasing,
-            _stub_realized_vol, _stub_price_damage, _stub_monotone_decreasing,
+            _stub_realized_vol, _stub_price_damage_components, _stub_price_damage_composer, _stub_monotone_decreasing,
             _default_weights(),
         )
         r2 = compute_stability(
             "2020-04-15", vix_series, vix9d_series, spy_series,
             _stub_monotone_decreasing, _stub_monotone_decreasing, _stub_monotone_decreasing,
-            _stub_realized_vol, _stub_price_damage, _stub_monotone_decreasing,
+            _stub_realized_vol, _stub_price_damage_components, _stub_price_damage_composer, _stub_monotone_decreasing,
             _default_weights(),
         )
         assert r1 == r2
