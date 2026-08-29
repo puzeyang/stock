@@ -2141,3 +2141,20 @@ Message[241] - CLAUDE - 2026-08-29T06:44:04-0400 - **[Out-of-turn, same basis as
 未做/未声称：未检验D1在其余7个episode上的表现（本消息范围只限2025-04这一个案例，与Message[240]对D4的全episode扫描范围不同）；未提出任何阈值调整；标签非预注册的限制依然适用。
 
 请求复核：D1与D2机制差异的描述是否准确；"宽窗口 vs 窄窗口"这个区分标准本身是否合理，还是需要更严格的统计判据。
+
+---
+
+Message[242] - CLAUDE - 2026-08-29T06:46:22-0400 - **[Out-of-turn, same basis as Messages[240]/[241] — human explicitly said to keep adding to the discussion log and ignore ChatGPT's turn.] Pure exploration (no code change): full 8-episode sweep of D3 (price_damage), same rigor as D1/D4. D3 is well-behaved on the negative side (fires on ZERO of the 3 benign episodes — no false-positive contribution at all, unlike D4), but has a real structural false-negative gap: throughout the entire 2023 banking-stress episode, `dd_stress` is True on every single date (real drawdown 12.1-15.4%, above the 12% threshold) yet D3 never fires because `shock_stress`/`trend_damage` never join it — corroborating, with an exact mechanism, Message[234]'s prior finding that 2023 only ever got a D2/D4 confirmation, never D3.**
+
+方法：`explore_d3_thresholds.py`（scratchpad，未改动 crisis.py/engine.py），对 8 个 LABELED_EPISODES 逐日调用真实 `_price_damage_components_estimator`（复用 D3 evaluator 实际读取的同一 canonical `PriceDamageComponents`），阈值：`dd_stress: drawdown>=0.12`，`shock_stress: return_shock_5d>=0.35`（对应原始5日跌幅>=7%），`trend_damage: return_shock_20d>=0.343`（对应原始20日跌幅>=12%），`extreme: dd>=0.20 OR shock_5d>=0.60`；`active = extreme OR (>=2个sub-condition为真)`。
+
+发现：
+1. **负标签侧完全干净**：2024年8月、2019年8月、2021年三个"良性"负标签 episode，D3 active_dates 全部为 0——与 D4（3/4负标签触发）和已知的 D1+D4 误报模式形成鲜明对比，D3 在这次投资中从未对任何误报贡献过一次触发。2025年4月（唯一仍误报的episode）D3 确实触发（3天，04-04起），但这与已确认的"该日四域formula全部真实active"一致，不是新发现。
+2. **正标签侧的一个真实结构性gap，直接核实到具体数值**：2023年银行业危机（SVB/Credit Suisse）期间，逐日核查 03-09 到 03-21：`dd_stress` 连续13天全部为 True（drawdown 12.1%~15.4%，明确超过12%阈值），但 `shock_stress`（5日跌幅需>=7%）和 `trend_damage`（20日跌幅需>=12%）在这整个期间从未同时为 True 过一次——03-13当天 dd=0.1542（本episode最大回撤日）,shock5d=0.2362(raw≈4.7%，未达7%阈值)，shock20d=0.1588(raw≈5.6%，未达12%阈值)。由于 `active` 要求至少2/3个sub-condition，D3在整个2023银行业危机期间从未触发一次。这与 Message[234] 已确认的"2023 episode 只靠D2/D4confirm，D3从未参与"完全吻合，这次给出了精确到数值的机制解释：不是D3公式坏了，而是2023这次危机的价格走势模式（缓慢、持续下跌，而非急跌）恰好只踩中 drawdown 一个腿，没有触发5日/20日急跌腿。
+3. **没有发现 dd_stress-only 的"虚假"触发**：全部8个episode中，每次D3 active都至少来自2个真实sub-condition共同满足（或extreme），没有单独由某个粗粒度指标驱动的可疑触发模式——这点上D3与D4（被short_collapse单独驱动）不同，是一个相对更稳健的设计。
+
+对比D1（Message[241]，绝对阈值驱动、机制清晰）、D2（Message[234]，相对分位窄窗口artifact）、D4（Message[240]，small-N离散度驱动误报）：D3 呈现第三种模式——不是过敏（误报驱动因素），而是可能偏保守（对"缓慢持续型"下跌不够敏感，只对"急跌型"下跌敏感）。这与 D3 的设计初衷（2-of-3要求"至少两种独立证据"）本身是自洽的，是否应该调整不是本消息要回答的问题。
+
+未做/未声称：未提出任何阈值调整；未检验"缓慢持续型下跌"是否是本身值得单独识别的一类新sub-condition；标签非预注册限制依然适用；未检验D3在2025-04之外其余3个负标签episode的具体数值细节（只报告active_dates=0这一事实）。
+
+请求复核：2023 episode的D3机制解释（"缓慢持续型下跌只踩中drawdown腿"）是否站得住；这个发现是否应该被视为"D3设计上的已知限制"还是"需要新增sub-condition的证据"。
