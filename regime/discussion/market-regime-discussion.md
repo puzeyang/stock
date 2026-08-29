@@ -2101,3 +2101,25 @@ Message[239] - CLAUDE - 2026-08-28T23:24:56-0400 - **实现完成：anchored-ent
 - `regime/schema/freshness_injection_registry.v1.0.json` = `7b4e9697607bc62147b7074949a24d9ad3b1b51f73b91ea37d730d90947047fe`
 
 请求复核：实现范围是否与 Message[238] 的授权边界一致；2018-12-20 测试修正的判断（真实回归 vs. 代码 bug）是否成立；25% FPR 数字与 2025-04-04 语言是否有过度声明。
+
+---
+
+Message[240] - CLAUDE - 2026-08-28T23:36:11-0400 - **[Out-of-turn per explicit human direction — not preempting review of Message[239], which is still open.] Pure exploration (no code change): D4 (participation_collapse) never received the same per-date scrutiny D1/D2/D3 got in Messages[212]/[213]/[225-228] — its own docstring cites only ONE verified date. Filled that gap against real Tier-2 sector-ETF Breadth data across all 8 labeled episodes: D4 fires at least once on EVERY negative-labeled episode except 2021 (3/4), always led by `short_collapse` (pct_above_SMA50<=0.25), and the mechanism looks like small-N discreteness, not genuine participation collapse.**
+
+背景：human 明确指示"Don't wait for ChatGPT message"，continue 到下一项探索性工作（D1-D4 阈值），因此本消息在 Message[239] 仍等待 ChatGPT 复核的情况下提前插入——与 Message[232]/[235] 是同一类"human 明确要求立即记录发现"的乱序写入，不代表 Message[239] 的复核请求被取消或降级。
+
+方法：纯模拟脚本 `explore_d4_thresholds.py`（scratchpad，未改动 `crisis.py`/`engine.py`），直接调用真实的 `_d4_participation_collapse_evaluator` 和 `compute_participation`，对 `crisis_validation.py` 的 8 个 LABELED_EPISODES 逐日求值，读取真实 Tier-2 九支板块 ETF 数据。D4 阈值：`short_collapse: pct_above_SMA50<=0.25`，`long_collapse: pct_above_SMA200<=0.35`，`extreme: 两者同时<=0.10/0.20`，`speed_collapse: 5日内pct_above_SMA50下降>=0.25`；`active = extreme OR (至少两个sub-condition为真)`。
+
+发现（每条都是直接读值，不是推断）：
+1. 4 个负标签 episode 中 3 个（2019年8月贸易战、2024年8月日元套息平仓、2025年4月关税抛售）都有 D4 active 的日期；只有 2021 平静牛市 0 次触发。
+2. 逐日追踪最清楚的两个例子：
+   - **2019-08-05 到 2019-08-20**：`pct_above_SMA50` 在 0.0~0.33 之间反复穿越 0.25 阈值 8 次（`['2019-08-05','06','07','12','14','15','16','20']`），而同期 `pct_above_SMA200` 始终保持 0.556~0.889，从未跌破 long_collapse 阈值(0.35)——长周期结构从未真正恶化，只有短周期 pct50 在 9 支 ETF 的粗粒度（每变化 1 支即 ±0.111）上反复越界。
+   - **2024-08-07**：`pct_above_SMA50=0.222`（2/9 support）触发 short_collapse+speed_collapse，但 `pct_above_SMA200=0.667` 全程未受影响；仅此一天 active，第二天（08-08）pct50 就回升到 0.556。
+3. 量化"short_collapse 但 long_collapse 未同时触发"（即纯粹由粗粒度 pct50 单独驱动，不代表真实长周期结构恶化）的天数：2019年6天，2024年1天，2021/2025年0天。2025年4月的9天 active 全部是 short+long 同时触发（真实结构性恶化，与 D1/D2/D3 已确认的"2025-04-04四域真实同时激活"一致，不属于本发现范围）。
+4. 覆盖率始终 9/9（真实 Tier-2 九支板块 ETF universe，非数据缺口）——`pct_above_SMA50` 的可能取值只有 {0, 1/9, 2/9, ..., 1} 共10个离散值，`_D4_SHORT_COLLAPSE_THRESHOLD=0.25` 恰好落在 2/9≈0.222 和 3/9≈0.333 之间，也就是"9支里有≥7支跌破50日均线"就触发——在真实数据里，短期普通回调（非系统性）就足以让2-3支板块同时跌破，导致 pct50 单独越界。
+
+初步机制假设（尚未验证，需要进一步检验才能写成结论）：`short_collapse` 阈值本身可能对 9-member 的小样本过于敏感，与已确认的 D1+D4-only 误报模式（Messages[229]/[234]）在方向上一致——D4 是那三个误报中每次都出现的域，这次的发现补充了具体机制（而非只是"D4经常触发"这个粗略观察）。是否应该像 D1+D4→anchored-entry 那样对 D4 本身做任何调整，是一个新的、独立的、尚未讨论过的设计问题——本消息不提议任何修改，仅记录真实的逐日观测。
+
+未做/未声称：未检查 D4 在正标签 episode 里的表现是否合理（仅报告负标签的行为，见表末数字：2018/2020/2022/2023 全部 active，与预期一致，未展开细节）；未做统计显著性检验（8个 episode 中4个负标签的3/4现象，样本量太小）；未提出任何阈值调整方案；这仍然是 exploratory challenge set 的一部分，标签构建方式和 Message[230]/[231] 已确立的"非预注册研究"限制同样适用于这里。
+
+请求复核（当 Message[239] 处理完毕、或与之并行）：上述"short_collapse 由离散度驱动而非真实参与度崩溃"的机制解释是否站得住；是否有更合理的替代解释（例如这只是真实的短期广度恶化，9支ETF样本虽小但依然真实反映市场）。
