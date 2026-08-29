@@ -11,29 +11,61 @@ still empty; risk_appetite_weights/stability_weights/
 trend_quality_weights are still equal-split placeholders; every D1-D4
 numeric threshold inside crisis.py/engine.py is still Message[211]'s
 original uncalibrated guess. This exists to answer "does the pipeline
-run coherently on real-scale windows and produce a plausible-looking
-state sequence" (per the human's explicit "Option a" direction) — NOT
-"is this state label correct/trustworthy for real decisions."
+run coherently on real-scale windows" (per the human's explicit
+"Option a" direction) — NOT "is this state label correct/trustworthy
+for real decisions". Per Message[262]'s review, a run of this script
+should be reported as a pipeline SMOKE RUN, not as a market-state or
+CRISIS-correctness check — the tool prints validity/reason-code detail
+specifically so a reader can judge that for themselves, not so it can
+be silently trusted.
 
 Usage:
     python3 regime/tools/run_rough_baseline.py [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--n N]
 
-PERFORMANCE NOTE (measured directly, not estimated): the default
---warmup-from 2019-01-01 to present is ~1900 real trading days; a full
-run through the engine's 12 modules (dominated by D1/D2's 504-session
-causal_midrank recomputation every single bar) takes roughly 7 minutes
-wall-clock on this machine, regardless of how few dates are actually
---n printed at the end -- every warm-up day still runs the full
-pipeline to keep RunningEngineState's cross-bar history correct. Not
-fast; run in the background for anything beyond a quick check.
+WARM-UP, CORRECTED (Message[262] point 1 — a real error in the prior
+version, not just imprecise wording): `--warmup-from` does NOT affect
+any raw-series lookback window. D1/D2/Direction/Breadth all read their
+windows directly from the FULLY LOADED raw series via
+`RawSeries.window_ending(as_of, N)`, independent of which date the
+caller starts calling `run_engine_for_date` from — verified directly:
+D1 requires only VIX (real coverage from 2007-01-03, so its 504-session
+window has been satisfiable since ~2009) plus a same-day VIX9D point
+value (real coverage from 2018-06-22, the actual reason CRISIS cannot
+be jointly evaluated before that date — confirmed directly:
+`_d1_volatility_term_structure_evaluator` shows `valid=False` on
+2018-06-21 and `valid=True` on 2018-06-22, with NO additional 504-
+session wait after that date). `--warmup-from` instead controls how
+much STATEFUL REPLAY HISTORY `RunningEngineState` accumulates before
+the first printed date — Direction's pending-confirmation counter,
+the ordinary/CRISIS/TRENDING state machines' own hysteresis counters,
+and Impulse's `condition_score_history` (needed for its own horizon
+lookups) all depend on how many prior bars were actually replayed
+through this specific run, not on any raw-series availability.
 
-Prints one line per real trading day in range: date, state,
-condition_score, direction_structure, crisis_active_domain_count,
-whether the record is current (state_is_current) or degraded.
+PERFORMANCE NOTE (measured directly): the default --warmup-from
+2019-01-01 to present is ~1900 real trading days; a full run through
+all 12 modules (dominated by D1/D2's 504-session causal_midrank
+recomputation every single bar) takes roughly 7 minutes wall-clock on
+this machine, regardless of how few dates are actually --n printed at
+the end. Not fast; run in the background for anything beyond a quick
+check.
+
+Output columns (per Message[262] point 2/3 — printing
+crisis_active_domain_count alone cannot distinguish "genuinely calm"
+from "domains unavailable", and an unavailable/degraded record needs
+its reason surfaced, not silently omitted):
+  date, state, current (state_is_current), condition_score,
+  direction, crisis_valid/active (X/4 format — read active only when
+  valid==4), crisis_reason_codes (any domain's non-empty reason codes,
+  union across all four), top_reason_codes (the record's own top-level
+  `reason_codes` and `unavailable_reason_codes`, when either is
+  non-empty/non-None).
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import sys
 from pathlib import Path
 
@@ -47,26 +79,79 @@ from v5_1.engine import (  # noqa: E402
 )
 
 
-def main() -> None:
+def _parse_args(argv=None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--start", default=None, help="first real trading date to include (YYYY-MM-DD)")
     parser.add_argument("--end", default=None, help="last real trading date to include (YYYY-MM-DD)")
-    parser.add_argument("--n", type=int, default=20, help="if --start not given, show the last N real trading days (default 20)")
+    parser.add_argument("--n", type=int, default=20, help="if --start not given, show the last N real trading days (default 20, must be >0)")
     parser.add_argument("--warmup-from", default="2019-01-01",
-                         help="engine state is warmed up from this date forward, before any printed date, "
-                              "so long-window pillars (Direction 200-session, Breadth 200-session, CRISIS's "
-                              "504-session D1/D2 windows, first satisfiable 2020-06-23 given VIX9D's real "
-                              "2018-06-22 coverage floor) are genuinely satisfied by the time printed dates "
-                              "are reached, not cold-started at --start itself. Default 2019-01-01 is a "
-                              "practical middle ground, not itself a real threshold -- printed dates before "
-                              "roughly 2020-06-23 will correctly show CRISIS domains as unavailable/invalid, "
-                              "not falsely calm, per the engine's own fail-closed warm-up contract. Running "
-                              "the full ~2900-real-day 2015-present range takes several minutes; shrink this "
-                              "for faster iteration if CRISIS availability on very recent dates is all you need.")
-    args = parser.parse_args()
+                         help="controls how much STATEFUL REPLAY history RunningEngineState accumulates before "
+                              "the first printed date (Direction pending-confirmation, state-machine hysteresis "
+                              "counters, Impulse's condition_score_history) -- does NOT affect any raw-series "
+                              "lookback window (see module docstring). Default 2019-01-01 is a practical choice, "
+                              "not a real threshold tied to any specific window length.")
+    parser.add_argument("--save-json", default=None, metavar="PATH",
+                         help="also persist the full per-date output records (Message[262] point 5: a machine-"
+                              "readable run artifact, not just an ephemeral terminal transcript) as JSON to this "
+                              "path, with metadata (script hash, manifest hash, config field values, date range).")
+    args = parser.parse_args(argv)
+
+    if args.n <= 0:
+        parser.error(f"--n must be > 0, got {args.n}")
+    if args.start is not None and args.start < args.warmup_from:
+        parser.error(f"--start ({args.start}) is before --warmup-from ({args.warmup_from}) -- "
+                     f"dates before --warmup-from are never replayed by this run, so --start there would "
+                     f"silently produce no output. Lower --warmup-from instead if you need earlier dates.")
+    if args.end is not None and args.start is not None and args.end < args.start:
+        parser.error(f"--end ({args.end}) is before --start ({args.start})")
+    if args.end is not None and args.end < args.warmup_from:
+        parser.error(f"--end ({args.end}) is before --warmup-from ({args.warmup_from}) -- no real trading day "
+                     f"in range would ever be replayed.")
+    return args
+
+
+def _crisis_summary(record: dict) -> tuple[str, str]:
+    """(valid/active count string, union of non-empty per-domain reason
+    codes) -- so a reader can tell 'genuinely calm' (valid==4,
+    active==0) apart from 'some domain unavailable' (valid<4) without
+    guessing, per Message[262] point 2."""
+    status = record.get("crisis_domain_status") or {}
+    valid_count = record.get("crisis_valid_domain_count")
+    active_count = record.get("crisis_active_domain_count")
+    reasons = set()
+    for reading in status.values():
+        rc = getattr(reading, "reason_codes", None)
+        if rc:
+            reasons.update(rc)
+    return f"{active_count}/{valid_count}(active/valid of 4)", ",".join(sorted(reasons)) if reasons else "-"
+
+
+def _top_level_reasons(record: dict) -> str:
+    """Message[262] point 3: a degraded/unavailable record must surface
+    WHY, not just that it happened."""
+    parts = []
+    urc = record.get("unavailable_reason_codes")
+    if urc:
+        parts.append(f"unavailable={urc}")
+    rc = record.get("reason_codes")
+    if rc:
+        parts.append(f"reason_codes={rc}")
+    if not record.get("state_is_current", True):
+        veto = record.get("active_veto_ids")
+        cap = record.get("active_cap_ids")
+        if veto:
+            parts.append(f"active_vetoes={veto}")
+        if cap:
+            parts.append(f"active_caps={cap}")
+    return " ".join(parts) if parts else "-"
+
+
+def main(argv=None) -> None:
+    args = _parse_args(argv)
 
     print("REASONABLENESS_CHECK_ROUGH_BASELINE -- NOT a calibrated production configuration.", file=sys.stderr)
-    print("Pillar weights, veto/cap rules, and every D1-D4 threshold remain uncalibrated placeholders.\n", file=sys.stderr)
+    print("Pillar weights, veto/cap rules, and every D1-D4 threshold remain uncalibrated placeholders.", file=sys.stderr)
+    print("This is a pipeline SMOKE RUN, not a market-state or CRISIS-correctness check (Message[262]).\n", file=sys.stderr)
 
     manifest = load_manifest()
     raw_bundle = load_raw_series_bundle(manifest)
@@ -74,16 +159,23 @@ def main() -> None:
     state = new_running_engine_state(config)
 
     all_dates = [o.date for o in raw_bundle.benchmark.observations if o.date >= args.warmup_from]
+    if not all_dates:
+        print(f"No real trading days found on/after --warmup-from {args.warmup_from}.", file=sys.stderr)
+        return
+
     if args.start:
         print_from = args.start
-    elif args.n:
-        real_dates_only = [o.date for o in raw_bundle.benchmark.observations if o.date >= args.warmup_from]
-        cutoff_dates = [d for d in real_dates_only if args.end is None or d <= args.end]
-        print_from = cutoff_dates[-args.n] if len(cutoff_dates) >= args.n else cutoff_dates[0]
     else:
-        print_from = args.warmup_from
+        cutoff_dates = [d for d in all_dates if args.end is None or d <= args.end]
+        if not cutoff_dates:
+            print(f"No real trading day in range (--warmup-from {args.warmup_from}, --end {args.end}).", file=sys.stderr)
+            return
+        print_from = cutoff_dates[-args.n] if len(cutoff_dates) >= args.n else cutoff_dates[0]
 
-    print(f"{'date':12s} {'state':10s} {'current':8s} {'condition':>10s} {'direction':16s} {'crisis_active':>14s}")
+    header = (f"{'date':12s} {'state':10s} {'current':8s} {'condition':>10s} {'direction':16s} "
+              f"{'crisis(act/valid)':>18s} {'crisis_reasons':30s} top_level_reasons")
+    print(header)
+    saved_rows = []
     for d in all_dates:
         if args.end is not None and d > args.end:
             break
@@ -92,9 +184,47 @@ def main() -> None:
             continue
         cond = record.get("condition_score")
         cond_str = f"{cond:.4f}" if cond is not None else "None"
+        crisis_str, crisis_reasons = _crisis_summary(record)
+        top_reasons = _top_level_reasons(record)
         print(f"{d:12s} {str(record['state']):10s} {str(record['state_is_current']):8s} "
               f"{cond_str:>10s} {str(record.get('direction_structure')):16s} "
-              f"{str(record.get('crisis_active_domain_count')):>14s}")
+              f"{crisis_str:>18s} {crisis_reasons:30s} {top_reasons}")
+        if args.save_json:
+            saved_rows.append({
+                "date": d, "state": str(record["state"]), "state_is_current": record["state_is_current"],
+                "condition_score": cond, "direction_structure": str(record.get("direction_structure")),
+                "crisis_active_domain_count": record.get("crisis_active_domain_count"),
+                "crisis_valid_domain_count": record.get("crisis_valid_domain_count"),
+                "crisis_reason_codes": crisis_reasons,
+                "top_level_reasons": top_reasons,
+                "unavailable_reason_codes": record.get("unavailable_reason_codes"),
+                "reason_codes": record.get("reason_codes"),
+                "active_veto_ids": record.get("active_veto_ids"),
+                "active_cap_ids": record.get("active_cap_ids"),
+                "pillar_agreement": record.get("pillar_agreement"),
+                "data_completeness": record.get("data_completeness"),
+                "decision_margin": record.get("decision_margin"),
+                "temporal_stability": record.get("temporal_stability"),
+                "impulse_score": record.get("impulse_score"),
+            })
+
+    if args.save_json:
+        script_path = Path(__file__).resolve()
+        out = {
+            "schema_version": "run_rough_baseline.outputs.v1",
+            "metadata": {
+                "script_sha256": hashlib.sha256(script_path.read_bytes()).hexdigest(),
+                "manifest_sha256": manifest.manifest_sha256,
+                "config": "REASONABLENESS_CHECK_ROUGH_BASELINE",
+                "warmup_from": args.warmup_from, "start": args.start, "end": args.end, "n": args.n,
+                "note": "pipeline smoke run, NOT a calibrated production configuration (Message[261]/[262])",
+            },
+            "rows": saved_rows,
+        }
+        out_path = Path(args.save_json)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(out, indent=2, sort_keys=True, default=str))
+        print(f"\nSaved {len(saved_rows)} rows to {out_path}", file=sys.stderr)
 
 
 if __name__ == "__main__":

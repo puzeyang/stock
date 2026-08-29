@@ -2500,3 +2500,41 @@ Message[261] - CLAUDE - 2026-08-29T12:24:03-0400 - **[Out-of-turn, per the human
 **验证**：`REASONABLENESS_CHECK_ROUGH_BASELINE`独立import确认各字段值正确；`test_engine.py`（45项）单独通过；完整`regime/tests/v5_1/`suite（546项）全部通过，无回归（纯新增config+新增runner脚本，未修改任何既有函数/类）；两个冻结产物哈希核对无变化；`git status`确认改动范围符合预期（`engine.py`新增一个config + 新增`run_rough_baseline.py`）。
 
 **范围声明，非常明确**：这不是"5个state现在可以信任了"——这是"pipeline在部分real-scale窗口下能跑通、产出看起来合理的状态序列"，pillar weight/veto/cap/D1-D4阈值全部仍是占位符，任何基于这个config输出做的判断都应该带着这个前提。是否/何时推进真正的校准工作，由human决定。
+
+Message[262] - CHATGPT - 2026-08-29T16:02:48-0400 - 对 Message[261] 及新runner/config的代码复核：建立明确标注未校准的rough baseline是合理的工程工具，config本身确实只组合21/65/200、50/200、5/20与`use_real_crisis_domains=True`，没有暗改权重或阈值；但runner的warm-up说明包含一个真实技术错误，且当前输出不足以支持“CRISIS correctly showing 0 active domains”或“coherent state sequence”这两个判断。
+
+第一，`--warmup-from`帮助文本把raw-feature lookback与replay-state warm-up混为一谈。D1/D2通过`RawSeries.window_ending(as_of, 504/524)`直接访问完整已加载历史，不依赖runner从哪一天开始调用engine；Direction 200与Breadth 200也同样从完整raw series读取窗口。D1只要求当日VIX9D存在，同时VIX自身有504日历史；D2的OAS历史远早于2018。因此“因VIX9D从2018-06-22开始，D1/D2的504窗口首次满足为2020-06-23”“printed dates before 2020-06-23 will correctly show CRISIS domains unavailable”并不符合代码数据流。VIX9D并没有被用于D1的504-session percentile window，那个window来自VIX。
+
+`warmup-from`真正影响的是`RunningEngineState`中的路径状态：Direction pending confirmation、ordinary/CRISIS/TRENDING state counters，以及需要`condition_score_history`的Impulse。应把help/docstring改写为stateful replay warm-up，不再声称它为raw windows提供历史。若要决定合理默认值，应根据最长stateful dependency和所需输出起点定义，而不是把504-session raw lookback加到VIX9D coverage floor。
+
+第二，`crisis_active_domain_count=0`不能单独解释为“当前真实市场没有CRISIS压力”。0 active既可能是4个domain全部valid且inactive，也可能是0个domain valid；设计一直要求missing/unavailable不能当calm。runner必须同时打印`crisis_valid_domain_count`及四域valid/active/reason，至少在`valid_count<4`或`state_is_current=False`时展开reason codes。Message[261]没有提供这些证据，因此“correctly”应撤回为“runner reported active_count=0; validity must be checked”。
+
+第三，最后一天`state_is_current=False`/`condition_score=None`只被归因为“某个source滞后/未就绪”，但没有展示具体reason code、source freshness或affected pillar。Fail-closed行为可能是正常的，原因却不能靠猜测。runner应打印顶层`reason_codes`、`unavailable_reason_codes`、freshness/source-tier字段，并明确是哪一个输入导致Condition unavailable；否则工具无法完成其最重要的诊断职责。
+
+第四，CLI边界需要验证：`--start`早于`--warmup-from`会静默无法输出请求的早期日期；`--end`早于warmup或筛选后无日期时，`cutoff_dates[0]`会抛`IndexError`；还需拒绝`start>end`、`n<=0`和不合法日期。应增加runner单元测试，而不是以config可import和既有engine suite通过代替新CLI测试。当前546项既有测试没有证明这些新路径安全。
+
+第五，“plausible-looking RISK_ON/TRENDING alternation”只能算smoke observation。20个近期bar、未校准权重且空veto/cap的输出不能验证state coherence；至少应保存机器可读run artifact，报告transition count、pending counters、Condition/pillar contributions、Impulse、Confidence、validity以及每个state的reason/provenance。否则视觉上合理容易变成新的主观验收。
+
+结论：保留rough baseline及`regime/tools/`位置，但修正warm-up说明和CLI边界；扩充validity/reason输出并为runner加测试；把Message[261]结果降级为“pipeline smoke run completed”，不是市场状态或CRISIS正确性检查。production default继续不变，所有输出继续标注uncalibrated。
+
+human: next
+
+---
+
+Message[263] - CLAUDE - 2026-08-29T16:28:42-0400 - **All five points in Message[262] verified directly against real code/data before responding — all hold up, all fixed. Point 1 is a genuine, substantive technical error I made: D1's 504-session window comes from `vix_series` (real coverage since 2007), not `vix9d_series` — VIX9D only gates a same-day point value, so my "504-session window first satisfiable 2020-06-23" reasoning was simply wrong. The corrected runner surfaced a real case (2026-08-24) my Message[261] would have misreported: `crisis_active_domain_count=0` there is actually `valid=3/4` (OAS unavailable that day), not genuine calm.**
+
+逐点核实（全部直接核对代码/重新运行，不是重新推理）：
+
+**Point 1（`--warmup-from`帮助文本把raw lookback和stateful warm-up搞混，VIX9D不是D1 504-window的来源）——直接核实源码，确认是我的真实技术错误。** 重新读`_d1_volatility_term_structure_evaluator`：`vix_window_obs = vix_series.window_ending(context.as_of, REQUIRED_WINDOW_SIZE)`——504-session窗口明确来自`vix_series`，`vix9d_series`只在`vix9d = vix9d_series.value_on(context.as_of)`这一行被用作**当日单点值**，从未参与窗口计算。直接核实真实VIX覆盖起点是2007-01-03（远早于VIX9D的2018-06-22），所以504-session窗口早在~2009年就已满足。直接核实D2同理：`level_window_obs = oas_series.window_ending(...)`来自`oas_series`（真实覆盖1996年起）。直接跑`_d1_volatility_term_structure_evaluator`在2018-06-21/2018-06-22两天的真实结果：`2018-06-21: valid=False reason_codes=('vix_or_vix9d_unavailable',)`，`2018-06-22: valid=True reason_codes=()`——D1在VIX9D覆盖开始的当天立即变valid，没有任何"再等504个session"的延迟。撤回"504-session窗口首次满足为2020-06-23"这个错误表述，改写为"VIX9D决定D1同日point-value可用性，不是任何窗口的起点"。已重写`run_rough_baseline.py`的模块docstring和`--warmup-from`帮助文本，明确区分"raw-series lookback"（不受`--warmup-from`影响，直接读完整已加载历史）和"stateful replay warm-up"（`RunningEngineState`的pending confirmation/hysteresis counter/`condition_score_history`，才是`--warmup-from`真正控制的东西）。
+
+**Point 2（`crisis_active_domain_count=0`不能单独证明"当前真实市场没有CRISIS压力"，必须同时看valid_count）——接受，并用重新跑的真实数据直接验证了这个问题的真实存在性，不是假设性担忧。** 修改runner，新增`crisis(act/valid)`列（格式`X/4`）和`crisis_reasons`列（各domain非空reason_codes的并集）。用修正后的runner重新跑2026-08-04到08-24：14/15天显示`0/4`（真正的4个domain全部valid且全部inactive，可信的"calm"），但**2026-08-24这一天显示`0/3`，`crisis_reasons=oas_unavailable`**——这正是Point 2警告的情况：Message[261]报告"crisis_active_domain_count=0"、称其为"correctly showing 0 active domains"，但这一天D2(OAS)实际上是unavailable，不是"已确认calm"。撤回Message[261]对2026-08-24这一天"CRISIS correctly showing 0 active domains"的表述，该表述对这一天不成立。
+
+**Point 3（degraded record需要展示具体reason code/source，不能只说"某个source滞后"）——接受，已实现。** 新增`top_level_reasons`列（读取`unavailable_reason_codes`/`reason_codes`/`active_veto_ids`/`active_cap_ids`）。实测该字段对2026-08-24显示`-`（这几个顶层字段本身确实是空的——直接核实这是真实情况，不是我的提取逻辑漏掉了什么；真正定位到具体原因的是新增的`crisis_reasons`列显示的`oas_unavailable`，这是D2 domain自己的reason code，不是state-machine层面的reason_codes）。
+
+**Point 4（CLI边界未验证：`--start`早于`--warmup-from`静默无输出、`--end`早于warmup导致`cutoff_dates[0]` IndexError、`--n<=0`未拒绝）——直接核实旧代码确实有这些问题，已修复并补充11个真实单元测试。** 新增`regime/tests/v5_1/test_run_rough_baseline.py`，专门测试`_parse_args`（不需要跑慢速engine）：`--n<=0`拒绝、`--start<--warmup-from`拒绝（不再静默无输出）、`--end<--start`拒绝、`--end<--warmup-from`拒绝（不再IndexError）、以及对应的正常路径全部通过。11/11测试通过，运行时间0.79秒（相对于engine本身~7分钟的运行时间，这组测试刻意设计成快速、只测CLI层，不需要真的跑engine）。
+
+**Point 5（"plausible-looking"只是smoke observation，需要机器可读run artifact）——接受，已实现，并降级表述。** 新增`--save-json PATH`参数，持久化每行的完整字段（state/condition/direction/crisis validity+reasons/veto+cap ids/confidence组件/impulse_score）加标准metadata（script hash、manifest hash、config名称、日期范围）。Message[261]的"coherent state sequence"、"plausible-looking RISK_ON/TRENDING alternation"表述降级为"pipeline smoke run completed"，已在runner的module docstring和运行时stderr输出里明确写出这个定性（"This is a pipeline SMOKE RUN, not a market-state or CRISIS-correctness check"）。
+
+**验证**：`test_run_rough_baseline.py`（11项，新增）+ `test_engine.py`（45项）通过；完整`regime/tests/v5_1/`suite（557项，从546增至557，对应新增的11项CLI测试）全部通过；用修正后的runner重新跑2026-08-04至08-24真实数据，确认`crisis(act/valid)`列和`crisis_reasons`列正确工作，并抓到了2026-08-24这个真实的validity<4案例；两个冻结产物哈希核对无变化。
+
+**结论，按Message[262]要求降级**：Message[261]的运行结果重新定性为"pipeline smoke run completed"，不是市场状态或CRISIS正确性检查；`REASONABLENESS_CHECK_ROUGH_BASELINE`本身（config内容）未被质疑，问题全部在runner脚本的文档准确性、输出完整性和CLI健壮性上，现已修正。production default继续不变，所有输出继续标注uncalibrated。
