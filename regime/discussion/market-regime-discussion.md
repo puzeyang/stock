@@ -2212,3 +2212,27 @@ Message[245] - CLAUDE - 2026-08-29T07:02:10-0400 - **[Out-of-turn per the human'
 验证：`import v5_1.engine` 正常；`test_engine.py`+`test_conformance_suite.py` 共64项测试全部通过（纯docstring改动，预期无回归，已直接验证而非假设）；冻结产物哈希核对无变化。
 
 未做：未改变`TEST_SCAFFOLDING_CONFIG`任何默认值；未改变`use_real_crisis_domains`默认仍为False；未声称D1-D4已校准或已可用于production。
+
+---
+
+Message[246] - CLAUDE - 2026-08-29T07:08:03-0400 - **[Out-of-turn per the human's ongoing direction — does not cancel Messages[244]/[245], still pending review. Also directly responds to the human's explicit new instruction: "then we need calibrate those numbers".] Design proposal only, NOT a threshold change: a preregistration protocol for calibrating D1-D4's numeric thresholds (E12), built directly on Message[243]'s own recommended process (freeze operational target → candidate set → negative controls → continuous development timeline → holdout) and Message[42]'s earlier Direction-calibration precedent (preregistered challenger set, not broad grid search). No numbers touched by this message.**
+
+为什么现在需要这个：Messages[240]-[245]确认了"了解CRISIS当前行为"和"校准CRISIS阈值"是两件不同的事——前者已经做得相当扎实（每个domain的真实机制都被追踪到具体数值），后者完全没有开始。当前全部阈值仍是Message[211]的原始baseline preset，从未在任何独立数据上验证过。8-episode集合本身也不是预注册研究（Message[230]/[231]已确立），如果直接拿这8个episode去调阈值，就是在用同一份数据既生成假设又验证假设——这正是Message[243]针对D3新增subcondition所警告的circularity，同样适用于任何阈值调整，不止D3。
+
+**真实数据边界核实**（直接查询，非假设）：`raw_bundle.vix9d`真实覆盖区间是`2018-06-22`到`2026-08-27`——这是D1唯一需要VIX9D的硬约束，决定了整个校准工作能用的最早日期。`benchmark`回到1993年，`oas`回到1996年，`breadth`（Tier-2九支ETF）覆盖范围未直接核实但此前投资已确认早于2018年数据不完整。结论：可用真实窗口是2018-06-22至今，约8年多，比当前8个episode实际覆盖的时间段（几个短窗口拼起来不到2年）要宽得多——当前label集合本身就没有用满已有的真实数据范围。
+
+**提议的协议（分五步，与Message[243]的建议顺序一致）**：
+
+1. **冻结每个domain的操作性target（operational target）**——在看任何校准结果之前，先用文字精确定义"这个domain在什么情况下应该被认为active"，独立于当前公式的具体阈值。例如D3需要回答：Message[243]已经提出的候选定义之一"12%以上回撤若持续N个有效bar也应视为price damage"，N具体等于多少、这个target的经济学依据是什么，必须先写下来，再看数据。D1/D2/D4各自也需要类似的书面target。这一步的产出是纯文字，不涉及任何具体阈值数字。
+
+2. **扩大episode集合，覆盖当前8个之外的真实空白期**——直接核实：当前集合在`2018-06`到`2018-10`、`2023-04`到`2024-07`之间完全没有标签样本，且只有一个calm-market负标签（2021）。真实2018-06-22起的数据里，至少还应该纳入：(a) 2018年初的"Volmageddon"附近（若VIX9D数据支持）；(b) 2023年中到2024年中这段长真空期里的至少一段真实calm/mild-correction样本；(c) 更多calm-market负标签，不止2021一个，避免负标签样本结构性偏向"唯一无风险窗口"。episode的选择标准必须在看任何domain公式的输出之前定下来（例如"NBER/主流财经媒体记录在案的真实市场事件"），不能因为某段时期恰好让某个公式表现更好/更差而选入/排除。
+
+3. **候选阈值集合与negative controls需要在动前公开列出**——每个domain的候选阈值（例如D3的drawdown/extreme阈值候选值列表）必须像Message[243]建议的那样，在跑数据前一次性列全，而不是看到某个episode结果后现改。negative controls：至少需要包含"该domain在无风险期间的真实基线分布"（例如D3的drawdown在2021整年、及新增的calm样本里的真实取值范围），确保候选阈值不会把正常市场噪音也算进去。
+
+4. **connected development timeline，而不是回测式最优化**——参考Message[42]对Direction的建议："not a broad grid search"。校准应该是按时间顺序推进的、可解释的候选比较（turnover、dwell time、每个候选在样本外的表现方向是否稳定），而不是网格搜索出一组在8/N个episode上数字最好看的参数。
+
+5. **最后才用holdout**——步骤1-4全部锁定之后，再切分train/holdout（不是现在就切，现在连episode集合本身都还没扩充完）,并且holdout集合的具体日期在此之前不应该被任何校准决策看到。
+
+**本消息明确不做的事**：不提出任何具体候选阈值数字；不扩大episode集合（那是这个协议被采纳之后的下一步工作，需要人工核实每个新增episode的真实性和标签依据，不是我可以单方面决定的）；不改动`crisis.py`/`engine.py`任何一行代码；不对D1-D4任何一个domain的当前阈值下结论。
+
+请求复核：这个五步协议本身是否合理、是否遗漏了防止circularity的关键环节；Message[243]针对D3提出的流程，直接套用到全部四个domain是否恰当，还是每个domain需要不同的处理（例如D2的"窄窗口percentile artifact"可能需要专门讨论percentile窗口长度本身是否也是一个需要校准的参数，而不只是绝对阈值）。
