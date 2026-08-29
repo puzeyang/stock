@@ -64,6 +64,8 @@ its reason surfaced, not silently omitted):
 from __future__ import annotations
 
 import argparse
+import dataclasses
+import datetime
 import hashlib
 import json
 import sys
@@ -79,21 +81,37 @@ from v5_1.engine import (  # noqa: E402
 )
 
 
+def _iso_date(value: str) -> str:
+    """argparse `type=` validator (Message[264] point 3 -- the prior
+    version compared date strings lexicographically with no format
+    check at all; verified directly that `--start abc` parsed cleanly
+    and would only fail obscurely later). Parses via
+    `datetime.date.fromisoformat` and returns the canonical
+    YYYY-MM-DD string, so downstream string comparisons stay correct
+    (ISO date strings sort lexicographically the same as the dates
+    they represent, which the rest of this file already relies on)."""
+    try:
+        return datetime.date.fromisoformat(value).isoformat()
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(f"not a valid ISO date (YYYY-MM-DD): {value!r} ({e})")
+
+
 def _parse_args(argv=None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--start", default=None, help="first real trading date to include (YYYY-MM-DD)")
-    parser.add_argument("--end", default=None, help="last real trading date to include (YYYY-MM-DD)")
+    parser.add_argument("--start", type=_iso_date, default=None, help="first real trading date to include (YYYY-MM-DD)")
+    parser.add_argument("--end", type=_iso_date, default=None, help="last real trading date to include (YYYY-MM-DD)")
     parser.add_argument("--n", type=int, default=20, help="if --start not given, show the last N real trading days (default 20, must be >0)")
-    parser.add_argument("--warmup-from", default="2019-01-01",
+    parser.add_argument("--warmup-from", type=_iso_date, default="2019-01-01",
                          help="controls how much STATEFUL REPLAY history RunningEngineState accumulates before "
                               "the first printed date (Direction pending-confirmation, state-machine hysteresis "
                               "counters, Impulse's condition_score_history) -- does NOT affect any raw-series "
                               "lookback window (see module docstring). Default 2019-01-01 is a practical choice, "
                               "not a real threshold tied to any specific window length.")
     parser.add_argument("--save-json", default=None, metavar="PATH",
-                         help="also persist the full per-date output records (Message[262] point 5: a machine-"
-                              "readable run artifact, not just an ephemeral terminal transcript) as JSON to this "
-                              "path, with metadata (script hash, manifest hash, config field values, date range).")
+                         help="also persist the COMPLETE, UNMODIFIED per-date output record (every field "
+                              "run_engine_for_date produces, not a curated subset -- Message[264] point 2) as "
+                              "JSON to this path, with metadata (script hash, manifest hash, the config's full "
+                              "field-value serialization plus its own hash, date range).")
     args = parser.parse_args(argv)
 
     if args.n <= 0:
@@ -108,6 +126,19 @@ def _parse_args(argv=None) -> argparse.Namespace:
         parser.error(f"--end ({args.end}) is before --warmup-from ({args.warmup_from}) -- no real trading day "
                      f"in range would ever be replayed.")
     return args
+
+
+def _json_default(obj):
+    """json.dumps `default=` for --save-json: makes any plain dataclass
+    (e.g. crisis_domain_status's CrisisDomainReading values, or the
+    config object itself) serialize as its field dict via
+    dataclasses.asdict, so a full record round-trips without a curated
+    field allowlist (Message[264] point 2). Falls back to str() for
+    anything else JSON can't natively handle (e.g. an Enum-like state
+    value)."""
+    if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
+        return dataclasses.asdict(obj)
+    return str(obj)
 
 
 def _crisis_summary(record: dict) -> tuple[str, str]:
@@ -190,41 +221,46 @@ def main(argv=None) -> None:
               f"{cond_str:>10s} {str(record.get('direction_structure')):16s} "
               f"{crisis_str:>18s} {crisis_reasons:30s} {top_reasons}")
         if args.save_json:
-            saved_rows.append({
-                "date": d, "state": str(record["state"]), "state_is_current": record["state_is_current"],
-                "condition_score": cond, "direction_structure": str(record.get("direction_structure")),
-                "crisis_active_domain_count": record.get("crisis_active_domain_count"),
-                "crisis_valid_domain_count": record.get("crisis_valid_domain_count"),
-                "crisis_reason_codes": crisis_reasons,
-                "top_level_reasons": top_reasons,
-                "unavailable_reason_codes": record.get("unavailable_reason_codes"),
-                "reason_codes": record.get("reason_codes"),
-                "active_veto_ids": record.get("active_veto_ids"),
-                "active_cap_ids": record.get("active_cap_ids"),
-                "pillar_agreement": record.get("pillar_agreement"),
-                "data_completeness": record.get("data_completeness"),
-                "decision_margin": record.get("decision_margin"),
-                "temporal_stability": record.get("temporal_stability"),
-                "impulse_score": record.get("impulse_score"),
-            })
+            # Message[264] point 2 -- the prior version saved ~16 hand-
+            # picked fields and called it "the full per-date record",
+            # which it was not. This saves the ENTIRE assembled record
+            # unmodified (via _json_default's dataclass-aware fallback,
+            # e.g. crisis_domain_status's CrisisDomainReading objects),
+            # not a curated subset -- a genuinely full, reproducible
+            # per-date artifact, not a summary dressed up as one.
+            saved_rows.append(record)
 
     if args.save_json:
         script_path = Path(__file__).resolve()
         out = {
-            "schema_version": "run_rough_baseline.outputs.v1",
+            "schema_version": "run_rough_baseline.outputs.v2",
             "metadata": {
                 "script_sha256": hashlib.sha256(script_path.read_bytes()).hexdigest(),
                 "manifest_sha256": manifest.manifest_sha256,
-                "config": "REASONABLENESS_CHECK_ROUGH_BASELINE",
+                "config_name": "REASONABLENESS_CHECK_ROUGH_BASELINE",
+                # Message[264] point 2 -- the prior version's "config":
+                # "REASONABLENESS_CHECK_ROUGH_BASELINE" was a bare name,
+                # not the field values it implied. Full config
+                # serialization (asdict, since every field is itself a
+                # plain dataclass -- verified directly, no RawSeries or
+                # callables embedded) plus a real hash of that
+                # serialization, so a reader can verify which exact
+                # config values produced this run without re-deriving
+                # them from engine.py's source at a possibly-different
+                # commit.
+                "config_values": dataclasses.asdict(config),
+                "config_values_sha256": hashlib.sha256(
+                    json.dumps(dataclasses.asdict(config), sort_keys=True, default=_json_default).encode()
+                ).hexdigest(),
                 "warmup_from": args.warmup_from, "start": args.start, "end": args.end, "n": args.n,
-                "note": "pipeline smoke run, NOT a calibrated production configuration (Message[261]/[262])",
+                "note": "pipeline smoke run, NOT a calibrated production configuration (Message[261]/[262]/[264])",
             },
             "rows": saved_rows,
         }
         out_path = Path(args.save_json)
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(json.dumps(out, indent=2, sort_keys=True, default=str))
-        print(f"\nSaved {len(saved_rows)} rows to {out_path}", file=sys.stderr)
+        out_path.write_text(json.dumps(out, indent=2, sort_keys=True, default=_json_default))
+        print(f"\nSaved {len(saved_rows)} full records to {out_path}", file=sys.stderr)
 
 
 if __name__ == "__main__":

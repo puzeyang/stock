@@ -1067,6 +1067,22 @@ def run_engine_for_date(
     raw_structure = classify_structure(direction_inputs)
     confirmed_structure = running_state.direction.advance(raw_structure)
 
+    # `unavailable_reason_codes` (Message[264] point 1 — a real,
+    # previously-undocumented gap this fixes): every pillar's
+    # *UnavailableError below carries a genuine, informative
+    # human-readable message (verified directly against every raise
+    # site in trend_quality.py/breadth.py/risk_appetite.py/stability.py/
+    # condition.py), but it was previously discarded entirely — the
+    # pillar result was set to None and the WHY was thrown away, so a
+    # degraded/unavailable record's top-level `unavailable_reason_codes`
+    # field was always empty (confirmed: engine.py never populated it
+    # before this fix). Each pillar's real message is now collected
+    # here, tagged with which pillar it came from, and threaded through
+    # to the assembled output — closing the loop Message[262]/[264]
+    # correctly identified the runner script alone could never close
+    # (the data simply did not exist upstream to extract).
+    pillar_unavailable_reasons: list[str] = []
+
     # --- TrendQuality (4.4) ---
     trend_quality_result: TrendQualityResult | None
     try:
@@ -1074,8 +1090,9 @@ def run_engine_for_date(
             as_of, raw.benchmark, config.trend_quality_regression_window,
             config.trend_quality_path_efficiency_window, config.trend_quality_weights,
         )
-    except TrendQualityUnavailableError:
+    except TrendQualityUnavailableError as e:
         trend_quality_result = None
+        pillar_unavailable_reasons.append(f"trend_quality_unavailable:{e}")
 
     direction_result: DirectionResult | None
     if confirmed_structure is None:
@@ -1093,8 +1110,9 @@ def run_engine_for_date(
         breadth_result = compute_breadth(
             raw.breadth, as_of, config.breadth_sma50_window, config.breadth_sma200_window, config.breadth_blend,
         )
-    except BreadthUnavailableError:
+    except BreadthUnavailableError as e:
         breadth_result = None
+        pillar_unavailable_reasons.append(f"breadth_unavailable:{e}")
 
     # --- Risk Appetite (4.6) ---
     risk_appetite_result: RiskAppetiteResult | None
@@ -1102,8 +1120,9 @@ def run_engine_for_date(
         risk_appetite_result = compute_risk_appetite(
             as_of, raw.oas, raw.qqq, raw.iwm, raw.benchmark, _causal_midrank_credit_transform, config.risk_appetite_weights,
         )
-    except RiskAppetiteUnavailableError:
+    except RiskAppetiteUnavailableError as e:
         risk_appetite_result = None
+        pillar_unavailable_reasons.append(f"risk_appetite_unavailable:{e}")
 
     # --- Stability (4.7) ---
     stability_result: StabilityResult | None
@@ -1114,8 +1133,9 @@ def run_engine_for_date(
             _realized_vol_estimator, _price_damage_components_estimator, _price_damage_composer, _price_stability_transform,
             config.stability_weights,
         )
-    except StabilityUnavailableError:
+    except StabilityUnavailableError as e:
         stability_result = None
+        pillar_unavailable_reasons.append(f"stability_unavailable:{e}")
 
     # --- Condition (4.8) ---
     condition_result: ConditionResult | None
@@ -1128,8 +1148,9 @@ def run_engine_for_date(
             stability_result.stability_score if stability_result is not None else None,
             config.pillar_weights, config.hard_veto_rules, {}, config.soft_cap_rules, {},
         )
-    except ConditionUnavailableError:
+    except ConditionUnavailableError as e:
         condition_result = None
+        pillar_unavailable_reasons.append(f"condition_unavailable:{e}")
 
     # Record this run's own real condition_score into the running history
     # BEFORE the Impulse block below reads it back for OTHER (earlier)
@@ -1231,6 +1252,12 @@ def run_engine_for_date(
         direction=direction_result, trend_quality=trend_quality_result, breadth=breadth_result,
         risk_appetite=risk_appetite_result, stability=stability_result, condition=condition_result,
         impulse=impulse_result, confidence=confidence_result, state=state_result,
+        # Message[264] point 1: real pillar-unavailability reasons,
+        # collected above at each *UnavailableError site — previously
+        # this was always None/empty regardless of what actually
+        # happened upstream. Only set when non-empty, matching every
+        # other optional field's None-when-absent convention here.
+        unavailable_reason_codes=pillar_unavailable_reasons if pillar_unavailable_reasons else None,
         crisis_domain_status=crisis_bar.domain_status,
         crisis_valid_domain_count=crisis_bar.valid_domain_count,
         crisis_active_domain_count=crisis_bar.active_domain_count,

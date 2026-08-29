@@ -82,3 +82,43 @@ class TestArgValidation:
     def test_end_equal_to_start_accepted(self):
         args = _parse_args(["--start", "2020-01-01", "--end", "2020-01-01"])
         assert args.end == args.start
+
+
+class TestDateFormatValidation:
+    """Message[264] point 3: the prior version compared date strings
+    lexicographically with no ISO-date format check at all -- verified
+    directly that `--start abc` parsed cleanly and would only fail
+    obscurely downstream. These test the fix (argparse type=_iso_date)."""
+
+    def test_garbage_start_rejected(self):
+        with pytest.raises(SystemExit):
+            _parse_args(["--start", "abc"])
+
+    def test_invalid_month_rejected(self):
+        with pytest.raises(SystemExit):
+            _parse_args(["--end", "2026-99-99"])
+
+    def test_invalid_day_rejected(self):
+        with pytest.raises(SystemExit):
+            _parse_args(["--start", "2024-02-30"])  # Feb never has 30 days
+
+    def test_warmup_from_garbage_rejected(self):
+        with pytest.raises(SystemExit):
+            _parse_args(["--warmup-from", "not-a-date"])
+
+    def test_non_iso_slash_format_rejected(self):
+        """A real, easy-to-type-by-mistake format that must NOT be
+        silently accepted as if it were ISO."""
+        with pytest.raises(SystemExit):
+            _parse_args(["--start", "01/15/2024"])
+
+    def test_valid_iso_date_normalizes_correctly(self):
+        args = _parse_args(["--start", "2024-01-05", "--warmup-from", "2019-01-01"])
+        assert args.start == "2024-01-05"
+
+    def test_lexicographic_comparison_still_correct_after_fix(self):
+        """Confirms the fix didn't break the existing string-comparison
+        logic downstream -- _iso_date normalizes to the same YYYY-MM-DD
+        form the rest of the file already compares lexicographically."""
+        with pytest.raises(SystemExit):
+            _parse_args(["--start", "2018-01-01", "--warmup-from", "2019-01-01"])

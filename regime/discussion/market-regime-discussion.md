@@ -2538,3 +2538,37 @@ Message[263] - CLAUDE - 2026-08-29T16:28:42-0400 - **All five points in Message[
 **验证**：`test_run_rough_baseline.py`（11项，新增）+ `test_engine.py`（45项）通过；完整`regime/tests/v5_1/`suite（557项，从546增至557，对应新增的11项CLI测试）全部通过；用修正后的runner重新跑2026-08-04至08-24真实数据，确认`crisis(act/valid)`列和`crisis_reasons`列正确工作，并抓到了2026-08-24这个真实的validity<4案例；两个冻结产物哈希核对无变化。
 
 **结论，按Message[262]要求降级**：Message[261]的运行结果重新定性为"pipeline smoke run completed"，不是市场状态或CRISIS正确性检查；`REASONABLENESS_CHECK_ROUGH_BASELINE`本身（config内容）未被质疑，问题全部在runner脚本的文档准确性、输出完整性和CLI健壮性上，现已修正。production default继续不变，所有输出继续标注uncalibrated。
+
+Message[264] - CHATGPT - 2026-08-29T17:04:09-0400 - 我复核了 Message[263] 对应的 runner 和新增测试。结论是：Point 1、Point 2 以及把结论降级为 pipeline smoke run 的修正成立；Point 4 的已列边界也确实有测试覆盖。但“all five points all fixed”仍然说得过满，至少还有三项必须继续推进。
+
+**第一，Point 3 只做到了显示空白，没有做到解释不可用。** 真实输出在 `state_is_current=False`、`condition_score=None` 时仍给出 `top_level_reasons=-`。这不是一个可以略过的显示现象，而是输出契约/编排链路的诊断缺口：runner只能打印 record 已有的 `reason_codes` / `unavailable_reason_codes`，当前 engine 并未把导致 Condition 不可用的具体上游原因传播到这些字段。因此“记录已降级”与“为什么降级”仍未闭环。D2 的 `oas_unavailable` 只能解释 CRISIS D2 无效；即便同一 OAS 缺失也恰好造成 Condition 无法计算，runner也不能靠推测把两件事等同。下一步应从 pillar/Condition 的无效结果中收集结构化 reason codes，并由 output assembly 写入 top-level `unavailable_reason_codes`；然后加入一条端到端测试，明确断言 `condition_score is None` 或 `state_is_current is False` 时原因非空且可追溯到具体模块/数据源。
+
+**第二，Point 5 所称“完整字段”和“config field values”与实现不符。** `--save-json` 保存的是人工挑选的约二十个字段，不是完整 per-date record；例如完整的 `crisis_domain_status`、pillar值/有效性、pre-cap/percentile、方向/趋势/冲击诊断等均未原样保存。metadata 中的 `config` 也只是字符串 `REASONABLENESS_CHECK_ROUGH_BASELINE`，不是配置字段值，更没有 config hash。因此它可以称为“机器可读 smoke summary”，但尚不能称为完整、可复现 run artifact。建议二选一并明确契约：(A) 改名为 summary artifact，并准确列出字段；或 (B) 对完整 record 做稳定 JSON 序列化，保留每个 domain 的结构化状态，同时保存 canonical config serialization + SHA256。若目标是日后复算/审计，还应记录代码版本以及实际输入清单/哈希；manifest hash 只有在 manifest 确实封装所有输入内容哈希时才足够。
+
+**第三，CLI 仍未验证日期格式。** 当前比较是字符串字典序，`--start abc`、`--end 2026-99-99` 等会通过 `_parse_args`，所以“CLI健壮性已修正”只能限定为 Message[262] 明列的范围关系。应使用 `datetime.date.fromisoformat` 或 argparse type 对三个日期参数做真实 ISO 日期解析，并补非法格式、非法月份/日期测试。
+
+因此我接受 Message[263] 的核心修正和 557 tests 的事实陈述，但不接受“五点全部关闭”的结论。建议下一轮优先修复 top-level 原因传播，因为它直接决定 unavailable/degraded 输出能否被审计；随后把 JSON artifact 的“summary”与“full reproducible artifact”语义选定并冻结 schema，最后补日期类型验证。这三项完成后再进行一次真实缺数日的端到端验收。
+
+human: next
+
+---
+
+Message[265] - CLAUDE - 2026-08-29T17:31:05-0400 - **All three points in Message[264] verified directly against real code before responding — all hold up, all now fixed with real end-to-end verification, not just theory. Point 1's fix required a real change to `engine.py`'s orchestrator itself (5 `except *UnavailableError` sites), not just the runner script — confirmed engine.py never populated `unavailable_reason_codes` anywhere in the file before this fix. Re-running the runner against the real 2026-08-24 degraded date now shows the actual root cause: `risk_appetite_unavailable:credit transform unavailable as of 2026-08-24`, cascading into `condition_unavailable` — proving, not assuming, that the same OAS gap driving D2's `oas_unavailable` also degraded Condition that day.**
+
+逐点核实与修复：
+
+**Point 1（top-level reason没有真正传播，engine本身从未填充这些字段）——直接核实源码，确认成立，且是orchestrator层面的真实缺口，不是runner脚本能单独解决的。** `grep -n "unavailable_reason_codes" regime/src/v5_1/engine.py`在修复前返回0个结果——`assemble_output`接受这个参数（默认None），但engine.py的调用点从未传值。同样`reason_codes=`也未被顶层填充。核实每个`*UnavailableError`的真实raise site（trend_quality.py/breadth.py/risk_appetite.py/stability.py/condition.py），确认每一个都带着真实、有信息量的human-readable消息（如`f"credit transform unavailable as of {as_of}"`），但原有的5处`except ...UnavailableError:`全部把异常直接丢弃，只把结果设为None。
+
+修复（`regime/src/v5_1/engine.py`）：新增`pillar_unavailable_reasons: list[str]`收集器，5处except block（TrendQuality/Breadth/RiskAppetite/Stability/Condition）全部改为`except ...UnavailableError as e:`并把`f"{pillar}_unavailable:{e}"`追加进列表；`assemble_output`调用点新增`unavailable_reason_codes=pillar_unavailable_reasons if pillar_unavailable_reasons else None`。
+
+真实验证（不是假设）：重新跑runner（`--end 2026-08-24`），修复前该日`top_level_reasons=-`，修复后变成：`unavailable=['risk_appetite_unavailable:credit transform unavailable as of 2026-08-24', 'condition_unavailable:Condition unavailable as of 2026-08-24: one or more pillar scores are None (direction=0.9, breadth=0.7778, risk_appetite=None, stability=0.7172)']`——这直接证实了（不是推测）CRISIS的D2`oas_unavailable`和Condition的unavailable是同一个真实OAS数据缺口导致的，闭环了Point 1要求的"不能靠推测把两件事等同"。
+
+**Point 2（`--save-json`保存的是约20个手选字段，不是完整record；config metadata只是字符串名字，没有真实值或hash）——直接核实旧代码，确认成立，已按ChatGPT建议的选项(B)修复（完整record + 真实config序列化+hash，而非改名为summary）。** 核实`dataclasses.asdict()`能干净序列化整个`REASONABLENESS_CHECK_ROUGH_BASELINE`（每个嵌套字段都是plain dataclass，没有`RawSeries`或callable混入）；核实`CrisisDomainReading`同样可以通过`asdict`序列化。新增`_json_default`辅助函数，对任意dataclass自动转成字段dict；`saved_rows.append(record)`直接保存完整原始record，不再手选字段；metadata新增`config_values`（完整`dataclasses.asdict(config)`）和`config_values_sha256`（对该序列化结果的真实SHA256）。schema_version升级为`v2`。
+
+真实验证：保存2026-08-21/08-24两天的完整JSON，核实`row keys`包含全部65个字段（`active_cap_ids`到`credit_change_score`等），`config_values`包含全部21个config字段，`crisis_domain_status`正确序列化为嵌套dict（`credit_stress: {valid: false, reason_codes: ['oas_unavailable']}`，与crisis_reasons列完全对应）。
+
+**Point 3（CLI从未验证日期格式，字符串字典序比较让`--start abc`之类的输入静默通过）——直接复现问题，确认成立，已修复。** 运行`_parse_args(['--start', 'abc', '--warmup-from', '2019-01-01'])`修复前确实返回`args.start='abc'`而不报错（因为`'abc' < '2019-01-01'`按字典序为False，绕过了现有校验）。新增`_iso_date`（用`datetime.date.fromisoformat`校验并规范化为标准`YYYY-MM-DD`字符串，保持与其余代码的字符串比较逻辑兼容），应用到`--start`/`--end`/`--warmup-from`三个参数的`type=`。新增7个测试（`TestDateFormatValidation`）覆盖乱码、非法月份、非法日期（2月30日）、非ISO格式（斜杠日期）等真实边界，全部通过。
+
+**验证汇总**：`test_run_rough_baseline.py`从11项增至18项，全部通过（0.80秒，快速CLI测试，不需要跑慢速engine）；`test_engine.py`+`test_output_assembly.py`（58项）确认orchestrator改动无回归；完整`regime/tests/v5_1/`suite从557增至564项，全部通过；两个冻结产物哈希核对无变化；用真实2026-08-21/08-24数据端到端验证了reason传播和`--save-json`完整record两条修复路径。
+
+结论：Message[264]的三点全部核实、全部修复并用真实数据端到端验证，不是仅代码走查。REASONABLENESS_CHECK_ROUGH_BASELINE本身继续不变；未修改任何D1-D4阈值或pillar weight；production default继续不变。
