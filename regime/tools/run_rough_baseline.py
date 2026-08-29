@@ -68,6 +68,7 @@ import dataclasses
 import datetime
 import hashlib
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -139,6 +140,29 @@ def _json_default(obj):
     if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
         return dataclasses.asdict(obj)
     return str(obj)
+
+
+def _code_version() -> dict:
+    """Real git commit hash + dirty-working-tree flag for the repo this
+    script lives in (Message[266] point 3 -- narrows "which code
+    produced this run" to a checkable point; still not a full
+    reproducibility guarantee, see the metadata note where this is
+    used). Never raises: if git is unavailable or this isn't a git
+    checkout, returns None for both fields rather than crashing a run
+    over metadata."""
+    repo_root = Path(__file__).resolve().parents[2]
+    try:
+        commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=repo_root, capture_output=True, text=True, timeout=10,
+        )
+        dirty = subprocess.run(
+            ["git", "status", "--porcelain"], cwd=repo_root, capture_output=True, text=True, timeout=10,
+        )
+        if commit.returncode != 0:
+            return {"commit": None, "dirty": None}
+        return {"commit": commit.stdout.strip(), "dirty": bool(dirty.stdout.strip()) if dirty.returncode == 0 else None}
+    except (subprocess.SubprocessError, OSError):
+        return {"commit": None, "dirty": None}
 
 
 def _crisis_summary(record: dict) -> tuple[str, str]:
@@ -226,17 +250,33 @@ def main(argv=None) -> None:
             # which it was not. This saves the ENTIRE assembled record
             # unmodified (via _json_default's dataclass-aware fallback,
             # e.g. crisis_domain_status's CrisisDomainReading objects),
-            # not a curated subset -- a genuinely full, reproducible
-            # per-date artifact, not a summary dressed up as one.
+            # not a curated subset -- a complete per-date engine-output
+            # artifact, not a summary dressed up as one. Message[266]
+            # point 3: this is NOT called "reproducible" -- see the
+            # metadata note below for why, and what would actually be
+            # needed for that stronger claim.
             saved_rows.append(record)
 
     if args.save_json:
         script_path = Path(__file__).resolve()
+        code_version = _code_version()
         out = {
             "schema_version": "run_rough_baseline.outputs.v2",
             "metadata": {
                 "script_sha256": hashlib.sha256(script_path.read_bytes()).hexdigest(),
                 "manifest_sha256": manifest.manifest_sha256,
+                # Message[266] point 3: script_sha256 alone only covers
+                # THIS file -- the code that actually produces the
+                # numbers (engine.py and every module it calls) was
+                # previously unidentified. git_commit + git_dirty
+                # narrows "which code produced this" to a real, checkable
+                # point, though it is still not a full reproducibility
+                # guarantee (Python/dependency versions and the OS/
+                # platform are not captured) -- see "artifact_kind" below
+                # for the honest claim this metadata actually supports.
+                "git_commit": code_version["commit"],
+                "git_dirty": code_version["dirty"],
+                "python_version": sys.version,
                 "config_name": "REASONABLENESS_CHECK_ROUGH_BASELINE",
                 # Message[264] point 2 -- the prior version's "config":
                 # "REASONABLENESS_CHECK_ROUGH_BASELINE" was a bare name,
@@ -253,7 +293,16 @@ def main(argv=None) -> None:
                     json.dumps(dataclasses.asdict(config), sort_keys=True, default=_json_default).encode()
                 ).hexdigest(),
                 "warmup_from": args.warmup_from, "start": args.start, "end": args.end, "n": args.n,
-                "note": "pipeline smoke run, NOT a calibrated production configuration (Message[261]/[262]/[264])",
+                # Message[266] point 3: "reproducible artifact" overclaimed
+                # what script_sha256+manifest_sha256 alone could guarantee.
+                # This is a "full_engine_output_artifact" -- a complete,
+                # unmodified snapshot of what this run produced, traceable
+                # to a specific git commit/dirty-state and config, but NOT
+                # a guarantee that re-running it elsewhere reproduces the
+                # exact same output (Python/dependency/OS versions are not
+                # pinned here).
+                "artifact_kind": "full_engine_output_artifact",
+                "note": "pipeline smoke run, NOT a calibrated production configuration (Message[261]/[262]/[264]/[266])",
             },
             "rows": saved_rows,
         }

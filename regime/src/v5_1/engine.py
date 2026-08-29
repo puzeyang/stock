@@ -1047,7 +1047,22 @@ def run_engine_for_date(
     `running_state` in place (so a caller running a full date sequence
     just calls this once per date, in ascending order, reusing the same
     `running_state` object across calls). Returns the assembled+validated
-    86-field output record (module 4.12) for this date.
+    output record (module 4.12) for this date.
+
+    **Field count clarification (Message[266] point 2 — a real, found
+    discrepancy, not a rounding difference):** the manifest declares 86
+    fields as `output_assembly.py`'s FULL contract (`len(manifest.fields)
+    == 86`, verified directly), which includes `assemble_output`'s
+    optional `raw_features` parameter's fields. This orchestrator NEVER
+    passes `raw_features` (it is not one of Slice 2's raw-loader
+    responsibilities this file takes on), so the actual record this
+    function returns has exactly 78 fields (verified directly via
+    `len(record)` on a real run) — 8 fewer than the full manifest
+    contract, not a rounding or documentation-only difference. "Complete
+    engine output" (78, what this function genuinely returns) and
+    "complete manifest output contract" (86, what `output_assembly.py`
+    is CAPABLE of producing if raw_features were also supplied) are two
+    different, both-legitimate definitions — do not conflate them.
 
     Every module's own fail-closed behavior is preserved unmodified — this
     function does not add a second layer of availability logic beyond
@@ -1081,7 +1096,27 @@ def run_engine_for_date(
     # to the assembled output — closing the loop Message[262]/[264]
     # correctly identified the runner script alone could never close
     # (the data simply did not exist upstream to extract).
+    #
+    # STABLE CODE + DETAIL FORMAT (Message[266] point 3 — a real
+    # maintainability gap, not addressed by the first fix): the earlier
+    # version's entries were `f"{pillar}_unavailable:{e}"`, embedding the
+    # exception's own free-text message directly into what looked like a
+    # stable code — any future wording change to a *_unavailable message
+    # (e.g. a typo fix) would silently break anything downstream matching
+    # on the old text. Each entry is now
+    # `"{pillar}.{stable_code}: {human_detail}"`, where `stable_code` is
+    # a small, fixed identifier this file owns and controls (NOT derived
+    # from the exception's own text), so the machine-matchable prefix
+    # stays stable across any future wording change to the underlying
+    # error message. The manifest's own schema for this field
+    # (market_regime_fields.v5.1.json) declares only `"array"`/
+    # `"collection"` shape with "member semantics defined by v5.1" — no
+    # rigid format constraining this, verified directly before choosing
+    # this encoding rather than inventing a whole new dict-shaped field.
     pillar_unavailable_reasons: list[str] = []
+
+    def _unavailable_reason(pillar: str, stable_code: str, detail: object) -> str:
+        return f"{pillar}.{stable_code}: {detail}"
 
     # --- TrendQuality (4.4) ---
     trend_quality_result: TrendQualityResult | None
@@ -1092,7 +1127,7 @@ def run_engine_for_date(
         )
     except TrendQualityUnavailableError as e:
         trend_quality_result = None
-        pillar_unavailable_reasons.append(f"trend_quality_unavailable:{e}")
+        pillar_unavailable_reasons.append(_unavailable_reason("trend_quality", "unavailable", e))
 
     direction_result: DirectionResult | None
     if confirmed_structure is None:
@@ -1112,7 +1147,7 @@ def run_engine_for_date(
         )
     except BreadthUnavailableError as e:
         breadth_result = None
-        pillar_unavailable_reasons.append(f"breadth_unavailable:{e}")
+        pillar_unavailable_reasons.append(_unavailable_reason("breadth", "unavailable", e))
 
     # --- Risk Appetite (4.6) ---
     risk_appetite_result: RiskAppetiteResult | None
@@ -1122,7 +1157,7 @@ def run_engine_for_date(
         )
     except RiskAppetiteUnavailableError as e:
         risk_appetite_result = None
-        pillar_unavailable_reasons.append(f"risk_appetite_unavailable:{e}")
+        pillar_unavailable_reasons.append(_unavailable_reason("risk_appetite", "unavailable", e))
 
     # --- Stability (4.7) ---
     stability_result: StabilityResult | None
@@ -1135,7 +1170,7 @@ def run_engine_for_date(
         )
     except StabilityUnavailableError as e:
         stability_result = None
-        pillar_unavailable_reasons.append(f"stability_unavailable:{e}")
+        pillar_unavailable_reasons.append(_unavailable_reason("stability", "unavailable", e))
 
     # --- Condition (4.8) ---
     condition_result: ConditionResult | None
@@ -1150,7 +1185,7 @@ def run_engine_for_date(
         )
     except ConditionUnavailableError as e:
         condition_result = None
-        pillar_unavailable_reasons.append(f"condition_unavailable:{e}")
+        pillar_unavailable_reasons.append(_unavailable_reason("condition", "unavailable", e))
 
     # Record this run's own real condition_score into the running history
     # BEFORE the Impulse block below reads it back for OTHER (earlier)

@@ -104,6 +104,91 @@ class TestEndToEndWiring:
         assert record["direction_structure"] is not None
         assert record["condition_score"] is None
 
+    def test_degraded_record_carries_real_traceable_unavailable_reasons(self, manifest, raw_bundle):
+        """Regression test for Message[264]/[265]: previously every
+        pillar's *UnavailableError was caught and silently discarded
+        (the result set to None, the exception's own informative message
+        thrown away) — `unavailable_reason_codes` was always empty
+        regardless of what actually went wrong upstream. Uses the SAME
+        real pre-VIX9D date as
+        test_pre_vix9d_dates_produce_unavailable_condition_and_state_not_a_crash
+        (a genuine, deterministic real-data fixture, not synthetic) to
+        assert the actual cascade is now traceable end to end: Stability
+        unavailable (the real binding constraint) -> Condition
+        unavailable as a consequence -> both reasons present, tagged
+        with which pillar each came from, and NOT silently empty."""
+        state = new_running_engine_state()
+        record = run_engine_for_date("2018-01-16", raw_bundle, state, manifest)
+        assert record["condition_score"] is None
+        assert record["engine_status"] == "DEGRADED"
+
+        reasons = record["unavailable_reason_codes"]
+        assert reasons is not None and len(reasons) > 0, (
+            "a DEGRADED record with condition_score=None must carry a non-empty, traceable reason"
+        )
+        # Format is "{pillar}.{stable_code}: {detail}" (Message[266] point 3 --
+        # stable_code is fixed by this file, not derived from the exception's
+        # own free-text message, so it stays matchable across wording changes).
+        assert any(r.startswith("stability.unavailable:") for r in reasons), (
+            f"real binding constraint for this date is Stability (VIX9D-gated) -- expected a "
+            f"stability.unavailable:-tagged reason, got: {reasons}"
+        )
+        assert any(r.startswith("condition.unavailable:") for r in reasons), (
+            f"Condition becoming unavailable as a CONSEQUENCE of Stability must itself be traceable, "
+            f"not silently absorbed -- got: {reasons}"
+        )
+        # must NOT be contaminated with pillars that are genuinely available this date
+        assert not any(r.startswith("breadth.") for r in reasons), f"breadth is genuinely available on this date: {reasons}"
+        assert not any(r.startswith("risk_appetite.") for r in reasons), f"risk_appetite is genuinely available on this date: {reasons}"
+        assert not any(r.startswith("trend_quality.") for r in reasons), f"trend_quality is genuinely available on this date: {reasons}"
+
+    def test_available_record_has_no_unavailable_reasons(self, manifest, raw_bundle):
+        """The inverse of the above: a genuinely healthy record must NOT
+        carry any stale/leftover unavailable_reason_codes (fail-closed
+        in one direction only — never fabricate a reason for a pillar
+        that is genuinely fine)."""
+        state = new_running_engine_state()
+        record = run_engine_for_date("2020-04-15", raw_bundle, state, manifest)
+        assert record["condition_score"] is not None
+        assert record["unavailable_reason_codes"] is None
+
+    def test_direction_unavailable_is_not_yet_traced(self, manifest, raw_bundle):
+        """KNOWN GAP, documented per Message[266] point 1 rather than
+        silently left unverified: `direction_result=None` (when
+        `confirmed_structure is None`, i.e. `classify_structure` itself
+        returned None from insufficient real price history) never raises
+        any `*UnavailableError` — DirectionConfirmationState's own
+        cold-start logic (see direction.py) means the ONLY way
+        `confirmed_structure` stays None is if the raw classification
+        itself is None, which happens silently with no exception at all.
+        So Direction can NEVER append to `unavailable_reason_codes` under
+        the current fix, unlike the other four pillars. Verified directly
+        with a genuinely real fixture: the benchmark series' own FIRST
+        real observation date (1993-01-29) has insufficient history for
+        Direction's 200-session SMA, so direction_structure is None, yet
+        `unavailable_reason_codes` names trend_quality/breadth/
+        risk_appetite/stability/condition but never "direction" anywhere.
+        This test asserts the CURRENT (incomplete) behavior directly, so
+        it fails loudly the moment this gap is closed, rather than
+        staying silently accurate about a limitation no one remembers
+        exists."""
+        state = new_running_engine_state()
+        first_date = raw_bundle.benchmark.observations[0].date
+        record = run_engine_for_date(first_date, raw_bundle, state, manifest)
+        assert record["direction_structure"] is None, (
+            f"expected direction to be genuinely unavailable on {first_date} (insufficient 200-session "
+            f"history) -- if this fails, the fixture date no longer exercises this gap, pick a new one"
+        )
+        reasons = record["unavailable_reason_codes"] or []
+        # "direction" DOES appear inside condition.unavailable's own cascade message
+        # ("...direction=None, breadth=None..."), which is expected and correct --
+        # what must NOT exist is a DEDICATED direction.*-prefixed reason, the way
+        # trend_quality.unavailable:/breadth.unavailable:/etc. each are.
+        assert not any(r.startswith("direction.") for r in reasons), (
+            "if this assertion fails, the Direction-unavailable-without-exception gap has been closed -- "
+            f"update this test to assert the NEW correct behavior instead of this documented gap. reasons={reasons}"
+        )
+
 
 # ---------------------------------------------------------------------------
 # CRISIS domain stub — regression test for the real sign bug found via
