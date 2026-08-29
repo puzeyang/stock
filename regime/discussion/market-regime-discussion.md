@@ -2123,3 +2123,21 @@ Message[240] - CLAUDE - 2026-08-28T23:36:11-0400 - **[Out-of-turn per explicit h
 未做/未声称：未检查 D4 在正标签 episode 里的表现是否合理（仅报告负标签的行为，见表末数字：2018/2020/2022/2023 全部 active，与预期一致，未展开细节）；未做统计显著性检验（8个 episode 中4个负标签的3/4现象，样本量太小）；未提出任何阈值调整方案；这仍然是 exploratory challenge set 的一部分，标签构建方式和 Message[230]/[231] 已确立的"非预注册研究"限制同样适用于这里。
 
 请求复核（当 Message[239] 处理完毕、或与之并行）：上述"short_collapse 由离散度驱动而非真实参与度崩溃"的机制解释是否站得住；是否有更合理的替代解释（例如这只是真实的短期广度恶化，9支ETF样本虽小但依然真实反映市场）。
+
+---
+
+Message[241] - CLAUDE - 2026-08-29T06:44:04-0400 - **[Out-of-turn, same basis as Message[240] — human directed continuing without waiting; does not cancel Message[239]/[240]'s pending review.] Pure exploration (no code change): traced D1 (volatility_term_structure)'s exact mechanism on 2025-04-04, the sole remaining false positive under the anchored-entry rule. Unlike D2's finding in Message[234] (relative-percentile branch firing on a narrow historical window), D1's activation that day is genuinely driven by the ABSOLUTE VIX level — VIX=45.31 clears both the plain level threshold (30.0) and the extreme threshold (40.0) outright. A secondary, more interesting finding: D1 was already active TWO trading days earlier (2025-04-01/04-02) via its relative-percentile branch alone, and that branch's 504-session window is wide ([11.86, 38.57]) — a materially different, more benign situation than D2's narrow window, since here the percentile is elevated because the trailing period was unusually calm, not because the window itself is artificially compressed.**
+
+方法：`explore_d1_thresholds.py`（scratchpad，未改动 crisis.py/engine.py），直接读取真实 pinned VIX/VIX9D 数据，逐日重算 D1 的全部 sub-condition（level_stress 的 abs/rel 两支分别显示、curve_stress、jump_stress、extreme），2025-03-20 到 2025-04-08 全区间检查，不只是单日快照。
+
+发现：
+1. **2025-04-04（原始误报日）**：VIX=45.31，直接超过 `_D1_EXTREME_VIX=40.0` 和 `_D1_VIX_LEVEL_THRESHOLD=30.0` 两个绝对阈值；`level_stress=True(abs=True, rel=True)`，`extreme=True` 由绝对值单独驱动（不依赖 vix_pct504）。这是一次教科书式的真实波动率飙升，不是阈值/窗口artifact——与 Message[234] 对 D2 的发现（OAS绝对值4.45pp远低于6.00pp阈值，完全靠504日窄窗口的94.2分位触发）在机制上完全不同，不能用同一种"formula active但economic fact存疑"的语言去描述D1这一天。
+2. **2025-04-01/04-02（4-04前两个交易日）**：D1 已经 active，但触发路径不同——`level_stress` 只靠相对分位支（`vix_pct504=95.4/94.5`，VIX绝对值仅21.77/21.51，远低于30.0绝对阈值），配合 `curve_stress=True`（VIX9D/VIX ratio已进入backwardation，1.123/1.129>=1.05），`jump_stress=False`，两个sub-condition为真即达到active（非extreme路径）。
+3. **窗口宽度对比（关键区别于D2）**：D1这504日窗口的真实range是[11.86, 38.57]，跨度约27个VIX点，是相对"正常宽"的历史区间；相比之下 Message[234] 记录的D2窗口只有[2.59, 4.95]pp，跨度仅2.36pp。用真实数据核实：在D1这个宽窗口里，"90th percentile VIX水平"约等于19.9——即4-01/04-02时VIX=21-22就已经踩线，是因为trailing ~2年这段时期本身波动率异常低（前置真实平静期），而不是像D2那样窗口本身被压缩到人为狭窄。这是两种不同的"relative branch触发"情形，不应该用同一句话概括。
+4. **curve_stress的早期信号是真实的，不是噪音**：核实backwardation（ratio>=1.05）从2025-03-25附近就开始出现并在03-31/04-01稳定超过阈值，时间上正好领先04-03关税消息公布——这与D1在04-01/04-02先于VIX绝对值飙升而active，是一个连贯、可解释的早期预警信号，不是阈值巧合。
+
+结论（谨慎表述，不外推）：本次探索没有在D1上发现类似D2那样"阈值可能对小样本/窄窗口过敏"的问题；相反，D1在2025-04-04这一天的active状态由绝对水平单独就能解释，其余三个domain（D2/D3/D4，据Messages[234]/[236]/[240]已确认）也各自有自己的真实触发原因，2025-04-04维持"四个domain formula在当天全部真实active"这个已确立的表述不变，无需修改。这次探索的主要贡献是排除了D1是本案例误报根源的可能性，并记录了04-01/04-02的relative-branch早期触发作为一个独立的、值得未来单独讨论的观察点（是否应该让D1的相对分位支单独作为更早期的watch信号，是一个新问题，本消息不提议任何设计）。
+
+未做/未声称：未检验D1在其余7个episode上的表现（本消息范围只限2025-04这一个案例，与Message[240]对D4的全episode扫描范围不同）；未提出任何阈值调整；标签非预注册的限制依然适用。
+
+请求复核：D1与D2机制差异的描述是否准确；"宽窗口 vs 窄窗口"这个区分标准本身是否合理，还是需要更严格的统计判据。
