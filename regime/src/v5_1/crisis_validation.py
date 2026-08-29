@@ -1,17 +1,58 @@
-"""Market Regime v5.1 — CRISIS Preregistered Validation Study (evaluation-
+"""Market Regime v5.1 — CRISIS Exploratory Challenge Set v0 (evaluation-
 only, NOT part of the 4.1-4.13 module set, NOT production code).
 
-**Why this exists**: Message[209]'s review of Message[208]'s original
-3-episode-only CRISIS validation proposal found it "tests selected
-positives but cannot control false positives or support threshold
-selection." Message[211] §九 specified a preregistered, positive-AND-
-negative, precision/recall/lead-lag study as the real acceptance
-standard for CRISIS domain thresholds — the "golden episode smoke test"
-Message[224] shipped with is explicitly NOT that study. This module is
-the first phase of building it, per the human's explicit direction to
-start with the core quantitative deliverable (real episode labels +
-false-positive/negative rates + precision/recall + entry lead/lag)
-rather than attempting all 8 of Message[211] §九's requirements at once.
+**STATUS CORRECTION (Message[230]/[231]): this is NOT a preregistered
+validation study, despite this module's original name and docstring
+claiming otherwise.** Message[230]'s independent review found, and
+Message[231] verified and accepted, six real problems with treating this
+module's output as a validated result:
+1. The 8 labeled episodes were built and dated AFTER real spot-checks
+   against several of the same dates earlier in this investigation
+   (Messages[212]/[224]/[228]) — a real "preregister before looking"
+   violation, not preregistered in any meaningful sense.
+2. `any_crisis_entered` (episode-level hit/miss) is biased toward long
+   windows getting more "chances" to register a hit than short windows
+   (e.g. 2022's 198 real dates vs. a 7-date negative episode) — treating
+   all episodes as exchangeable Bernoulli trials for a Wilson CI hides
+   this real exposure-length asymmetry.
+3. **The most important problem**: design §9.1 states verbatim
+   "Independent means no confirmation is an algebraic input to another.
+   Economic correlation is expected." Labeling an episode "negative"
+   BECAUSE credit (D2) stayed calm while two OTHER real domains (D1+D4)
+   genuinely corroborated is applying an implicit "CRISIS requires
+   credit confirmation" rule that appears nowhere in §9.1's actual text
+   — a real labeling circularity, not a defensible judgment call. Any
+   false-positive-rate computed against these labels is not trustworthy
+   at face value.
+4. This module's own earlier docstring promised precision/false-negative-
+   rate/dwell-time as deliverables; `ValidationStudyResult` never
+   actually computed them — corrected below (precision/FNR/dwell-time
+   are NOT currently implemented, full stop, not merely omitted from a
+   summary).
+5. `evaluate_episode` starts each episode from a FRESH `RunningEngineState`
+   (see its own docstring) — a legitimate design for an isolated entry
+   smoke test, but incapable of supporting annual false-crisis-day-rate,
+   real dwell time, or false-recovery/relapse metrics, which require one
+   continuous run with persisted state across the full real timeline.
+6. The real, statistically-elevated D1/D4 co-occurrence rate found by
+   this module (see `domain_correlation` analysis referenced in
+   Message[229]) remains real, but per point 3 does NOT by itself prove
+   the co-occurrence was a misclassification rather than the 2-of-4 rule
+   correctly recognizing genuine joint stress design §9.1 anticipates.
+
+**Current correct status**: this module produces a real, useful
+EXPLORATORY finding (D1+D4 co-occur at a real, non-trivial rate; three
+specific real dates are documented) but is NOT sufficient, on its own, to
+conclude the baseline preset (`use_real_crisis_domains=True`'s current
+thresholds) is empirically rejected for production. The baseline preset
+remains correctly unvalidated — not because this module proved it fails,
+but because a proper validation (with the operational CRISIS definition,
+labels, windows, and acceptance metrics frozen BEFORE looking at results,
+by a reviewer independent of whoever already saw this exploratory output)
+has not yet been done. Per Message[230]'s recommendation, that
+prerequisite freezing step is the next required action before any further
+code is written here — not something this module should attempt
+unilaterally.
 
 **Real, hard data-coverage limit, reported honestly rather than worked
 around**: VIX9D (required by D1) only has real pinned coverage starting
@@ -20,21 +61,17 @@ true first date ANY of the four CRISIS domains can be jointly evaluated.
 This means Message[211] §九's cited historical positive episodes
 predating that date (1987, 1998, 2000-02, 2008, 2011, 2015-16) are
 STRUCTURALLY UNAVAILABLE to this study, not merely inconvenient — no
-amount of data-cleaning fixes a series that starts in 2018. Per the
-human's explicit direction, this study covers the full real window this
-engine's data actually supports (2018-06-22 to present) and states this
-limitation prominently rather than silently narrowing scope or
-substituting a proxy series.
+amount of data-cleaning fixes a series that starts in 2018.
 
-**NOT production code, NOT a threshold-selection tool by itself.**
-Message[211] §九's own closing line is the standing discipline for
-whatever this module eventually produces: "若无 preset 同时满足约束，
-正确结果是'不采用任何公式，保持未校准'，不是放宽规则直到某组过关"
-(if no preset satisfies the constraints, the correct result is "adopt
-no formula, remain uncalibrated" — not loosening the rules until one
-passes). This module computes real metrics against real data; it does
-not itself decide whether `use_real_crisis_domains=True`'s current
-baseline preset should become a production default.
+**NOT production code, NOT a threshold-selection tool.** Message[211]
+§九's own closing line remains the standing discipline: "若无 preset 同时
+满足约束，正确结果是'不采用任何公式，保持未校准'，不是放宽规则直到某组
+过关" (if no preset satisfies the constraints, the correct result is
+"adopt no formula, remain uncalibrated" — not loosening the rules until
+one passes). This module computes exploratory metrics against real data;
+it does not itself decide whether any CRISIS preset should become a
+production default, and — per this status correction — it also does not
+currently establish that the baseline preset should be REJECTED.
 """
 from __future__ import annotations
 
