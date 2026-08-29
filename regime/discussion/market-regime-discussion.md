@@ -2482,3 +2482,21 @@ Message[260] - CLAUDE - 2026-08-29T10:41:03-0400 - **[Out-of-turn, per the human
 **加入后的验证**：`crisis_validation.py`独立import正常，episode数量从8变为9；`test_crisis_validation.py`12项测试全部通过（含5分钟+的运行时间，符合已知的慢测试特征）；通过真实engine重跑`run_validation_study`：recall保持100%（4/4 true positive不变），false_positive_rate从25%(1/4)变为20%(1/5)——新增的2023-10 episode被正确分类为true negative，唯一仍误报的还是2025-04-04（与已确立结论一致，四个domain formula当天全部真实active）。完整`regime/tests/v5_1/`suite 546/546通过，无回归。两个冻结产物哈希核对无变化。
 
 **范围声明**：本次只添加了一个episode，不是完整的gap填补——2018-06到2018-10的gap、"多于一个calm-market负标签"这两项此前提出的候选仍未处理，是否/何时补充由human决定，不由我自主推进。这仍然是exploratory/development集合的一部分，不是预注册研究——新增这一个episode不改变Message[255]已确立的"2018-2025全部已被查看过，不能再充当unseen holdout"这个状态。
+
+---
+
+Message[261] - CLAUDE - 2026-08-29T12:24:03-0400 - **[Out-of-turn, per the human's explicit direction to build an uncalibrated "rough baseline" end-to-end run (Option A of a three-way choice they were given: full calibration vs. a rough uncalibrated baseline vs. stopping).] New `engine.py` config `REASONABLENESS_CHECK_ROUGH_BASELINE`, combining every real-scale window fix this investigation has independently found (Direction 21/65/200, Breadth 50/200, Impulse 5/20) with `use_real_crisis_domains=True` for the first time in any REASONABLENESS_CHECK_* config — everything else (pillar weights, veto/cap rules, RiskAppetite/Stability/TrendQuality weights, all D1-D4 numeric thresholds) explicitly stays at its original uncalibrated placeholder. New runner `regime/tools/run_rough_baseline.py`. Ran end-to-end against real recent data: produces a coherent, plausible-looking state sequence (RISK_ON/TRENDING alternation, STRONG_BULL direction, CRISIS correctly showing 0 active domains). 546/546 tests pass, frozen artifacts unchanged.**
+
+背景：human被问及"是否有足够信息计算market 5 states"时，我给出了诚实的否定回答（CRISIS拓扑已定但四个domain公式未校准；Direction/Breadth/RiskAppetite/Stability的pillar weight全部还是等权重占位符；TRENDING/Impulse/Confidence完全未触碰），并提出两个选项：(a) 用现有的、此前已独立验证过的real-scale window修正拼成一个明确标注"未校准"的粗略baseline；(b) 承诺完整校准工作。human选择(a)。
+
+**实现**：新增`REASONABLENESS_CHECK_ROUGH_BASELINE`（engine.py），组合此前七个`REASONABLENESS_CHECK_CONFIG*`变体中已经独立验证过的三项real-scale窗口修正——Direction的21/65/200（design §6.1/plan §17.1引用的v4.4 default）、Breadth的50/200（字段名本身literal含义）、Impulse的5/20（plan §17 item 14引用的"Impulse 5/20 tanh"）——首次加上`use_real_crisis_domains=True`（此前所有REASONABLENESS_CHECK_*配置都从未打开过这个开关）。明确保留、不隐藏的未校准部分：`pillar_weights`（仍等权重25%）、`hard_veto_rules`/`soft_cap_rules`（仍为空tuple）、`risk_appetite_weights`/`stability_weights`/`trend_quality_weights`（仍等权重占位符）、`trend_quality_regression_window`/`trend_quality_path_efficiency_window`（仍是21，从未被reasonableness-check过）、以及crisis.py/engine.py内部D1-D4的全部数值阈值（仍是Message[211]原始未校准猜测）。
+
+新增`regime/tools/run_rough_baseline.py`——独立的runner脚本（非panel诊断工具，放在`regime/tools/`而非`regime/panels/`，因为这是可操作的运行工具，不是纯描述性诊断），支持`--start`/`--end`/`--n`/`--warmup-from`参数，默认warmup从2019-01-01开始（真实核实：VIX9D真实覆盖起点2018-06-22，D1/D2的504-session窗口首次满足是2020-06-23，2019-01-01是留有余量的实用起点，不是新的阈值声明）。脚本docstring和运行时都明确打印"NOT a calibrated production configuration"的警告，不让读者误认为这是可用于实盘决策的输出。
+
+**真实运行结果**（2026-08-04到2026-08-24，真实最新数据）：状态在RISK_ON和TRENDING之间切换，direction全程STRONG_BULL，condition_score在0.80-0.85区间，crisis_active_domain_count全程为0（当前真实市场没有CRISIS压力信号，符合预期）。最后一天（2026-08-24）`state_is_current=False`且`condition_score=None`——直接核实这是engine自身的fail-closed新鲜度逻辑正常工作（某个源数据在最新日期上滞后/未就绪），不是代码bug，与production环境下会遇到的真实情况一致。
+
+**性能特征（直接测量，非估计）**：默认2019-01-01到present的warmup约1900个真实交易日，完整跑一次（12个模块全部执行，主要开销在D1/D2每天504-session的causal_midrank重算）耗时约7分钟——不快，已在脚本docstring里明确写出，不留给使用者意外发现。
+
+**验证**：`REASONABLENESS_CHECK_ROUGH_BASELINE`独立import确认各字段值正确；`test_engine.py`（45项）单独通过；完整`regime/tests/v5_1/`suite（546项）全部通过，无回归（纯新增config+新增runner脚本，未修改任何既有函数/类）；两个冻结产物哈希核对无变化；`git status`确认改动范围符合预期（`engine.py`新增一个config + 新增`run_rough_baseline.py`）。
+
+**范围声明，非常明确**：这不是"5个state现在可以信任了"——这是"pipeline在部分real-scale窗口下能跑通、产出看起来合理的状态序列"，pillar weight/veto/cap/D1-D4阈值全部仍是占位符，任何基于这个config输出做的判断都应该带着这个前提。是否/何时推进真正的校准工作，由human决定。

@@ -938,6 +938,44 @@ REASONABLENESS_CHECK_CONFIG_REAL_IMPULSE = replace(
 )
 
 
+# REASONABLENESS_CHECK_ROUGH_BASELINE — an EIGHTH scaffolding instance,
+# built per the human's explicit direction ("Option a": stand up an
+# end-to-end run using every real-scale fix already found, rather than
+# waiting for full calibration). Combines every real/cited window fix
+# this investigation has independently found so far — Direction's
+# 21/65/200 (REASONABLENESS_CHECK_CONFIG), Breadth's 50/200
+# (REASONABLENESS_CHECK_CONFIG_REAL_BREADTH), Impulse's 5/20
+# (REASONABLENESS_CHECK_CONFIG_REAL_IMPULSE) — plus, for the first time,
+# `use_real_crisis_domains=True` (Messages[211]-[257]'s D1-D4 evaluators
+# and the anchored-entry rule), which no prior REASONABLENESS_CHECK_*
+# config has ever turned on.
+#
+# EXPLICITLY STILL UNCALIBRATED, NOT HIDDEN: `pillar_weights` (equal
+# 25% each), `hard_veto_rules`/`soft_cap_rules` (both empty),
+# `risk_appetite_weights`/`stability_weights`/`trend_quality_weights`
+# (equal-split placeholders), `trend_quality_regression_window`/
+# `trend_quality_path_efficiency_window` (still 21, a TEST_SCAFFOLDING_
+# CONFIG value never itself reasonableness-checked against a real
+# citation the way Direction/Breadth/Impulse's windows were), and every
+# D1-D4 numeric threshold inside crisis.py/engine.py remain exactly
+# their original Message[211] uncalibrated values. This config makes
+# the pipeline's WIRING run on real-scale windows where such a
+# real-scale reference already exists and has been checked; it does
+# NOT constitute a calibrated production configuration in any sense —
+# same "NOT a production default" discipline as every other config in
+# this file. A caller MUST NOT treat this config's output as anything
+# beyond a real-scale-windowed, still-uncalibrated rough baseline.
+REASONABLENESS_CHECK_ROUGH_BASELINE = replace(
+    TEST_SCAFFOLDING_CONFIG,
+    direction_horizons=DirectionHorizons(ema_fast=21, sma_mid=65, sma_long=200),
+    breadth_sma50_window=50,
+    breadth_sma200_window=200,
+    impulse_fast_horizon_sessions=5,
+    impulse_slow_horizon_sessions=20,
+    use_real_crisis_domains=True,
+)
+
+
 @dataclass(frozen=True)
 class RawSeriesBundle:
     """Every raw series the orchestrator needs for one run, loaded once
