@@ -46,17 +46,26 @@ further down** — these mean the orchestrator's own wiring is real and
 sound, but specific downstream computations it feeds were (one still is)
 STRUCTURALLY DEGENERATE, not merely "using placeholder numbers":
 
-1. **CRISIS can never fire through this orchestrator.**
-   `_stub_crisis_domain_never_active()` returns `active=False`
-   unconditionally for all four domains, every bar. This means
-   `replay.py`'s `crisis_entry_lag()` — one of the freshness spec's THREE
-   headline engine-dependent metrics (plan §4.13) — can currently only
-   ever return `None` (clean run never enters CRISIS) when run through
-   this orchestrator. This is a real, consequential gap, not just an
-   arbitrary-threshold placeholder: a real CRISIS domain evaluator would
-   at least sometimes fire on real 2020 COVID-era or other stress data,
-   and this stub is constructed so it structurally cannot, by any input.
-   Still open — not addressed by item 2's fix below.
+1. **CRISIS can never fire through this orchestrator BY DEFAULT.**
+   **(Update, 2026-08-28 — Messages[211]-[223]/[232]-[244]: no longer
+   true unconditionally.)** When `use_real_crisis_domains=False` (the
+   default — see `TestScaffoldingConfig.use_real_crisis_domains`'s own
+   docstring below), `_stub_crisis_domain_never_active()` still returns
+   `active=False` unconditionally for all four domains, every bar, and
+   `replay.py`'s `crisis_entry_lag()` — one of the freshness spec's
+   THREE headline engine-dependent metrics (plan §4.13) — still can
+   only ever return `None` through this default config. But setting
+   `use_real_crisis_domains=True` now wires in real (if uncalibrated)
+   D1-D4 evaluators (`_d1_volatility_term_structure_evaluator` etc.,
+   plus the anchored-entry corroboration rule in `crisis.py`'s
+   `CrisisState.advance()`) that genuinely fire on real stress data —
+   verified directly against real pinned 2018/2020/2022/2023/2025 data
+   in `test_engine.py::TestRealCrisisDomains` and the 8-episode
+   exploratory study in `crisis_validation.py`. This item is CLOSED for
+   the opt-in path; the underlying D1-D4 thresholds remain genuinely
+   EMPIRICAL/uncalibrated (§17.12, item E12), and `use_real_crisis_domains`
+   itself remains explicitly NOT a production default either way — see
+   below.
 2. **Impulse (FIXED per Message[207] — was previously always ~zero
    through this orchestrator, see history below).**
    `_impulse_horizon()`'s `t-h` endpoint used to be set to the SAME value
@@ -77,14 +86,23 @@ Item 1 (CRISIS) was previously disclosed only in
 `_stub_crisis_domain_never_active`'s own docstring/comment — true, but
 not given the same prominence as the smaller "known gaps" list in
 Message[181]/[183] of the discussion log (`oas_change`,
-`binding_event_changes`, etc.). Fixing CRISIS for real (a genuine CRISIS
-domain formula) remains EMPIRICAL/calibration work explicitly out of this
-engine's own scope (per every prior slice's no-invented-defaults
-discipline) — it is not something this orchestrator should silently paper
-over with a more "realistic-looking" but equally arbitrary placeholder.
-Anyone using `replay.py`'s `crisis_entry_lag()` through THIS orchestrator
-should know it is not currently capable of producing a real result — this
-is a real, not cosmetic, limitation of the current build.
+`binding_event_changes`, etc.). **This paragraph is itself now
+partially historical**: real (if uncalibrated) D1-D4 evaluators were
+built per Message[211]'s baseline preset and extensively reviewed/
+corrected through Messages[212]-[244] (unit-corrected in [212]/[213],
+canonical price-damage components in [225]-[228], anchored-entry
+corroboration in [232]-[239], per-domain mechanism traces in
+[240]-[244]) — this was NOT "silently papered over with a more
+realistic-looking but equally arbitrary placeholder"; each formula's
+real thresholds and their real, documented behavior on real historical
+data are on record in the discussion log, still explicitly labeled
+uncalibrated. Anyone using `replay.py`'s `crisis_entry_lag()` through
+the DEFAULT config (`use_real_crisis_domains=False`) still gets `None`
+always, exactly as before; anyone opting into
+`use_real_crisis_domains=True` now gets a real, if uncalibrated,
+result — this distinction did not exist when this paragraph was
+originally written and must not be collapsed back into "CRISIS cannot
+produce a real result" without qualification.
 
 `run_engine_for_date()` wires together, in dependency order: Slice 2 (raw
 series) -> Slice 3/3b (Direction + TrendQuality) -> Slices 4/5/6 (Breadth/

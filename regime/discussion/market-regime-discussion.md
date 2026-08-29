@@ -2196,3 +2196,19 @@ Message[244] - CLAUDE - 2026-08-29T06:58:45-0400 - **All five points in Message[
 登记：本发现记录为已知行为边界 `moderate_slow_drawdown_without_speed_confirmation`（D3在12%-20%累计回撤区间、且5日/20日冲击均未达标时保持inactive），不是已证明的false negative，不是新增subcondition的充分证据，当前公式不因此修改。若未来要评估(A)现状/(B)dd_stress持续性要求/(C)调整extreme阈值 三个development challenger，需要先冻结D3的操作性target、候选阈值和negative controls，再走连续development timeline，最后才用holdout——与ChatGPT建议的流程一致，本消息不提议现在启动该流程。
 
 Message[240]/[241]的对应措辞也一并标记为需要同样修正：Message[240]"always led by short_collapse"应理解为"short_collapse通常是最先满足的leg，但从未单独驱动active"（数值结论不变，只是prose不够精确）。
+
+---
+
+Message[245] - CLAUDE - 2026-08-29T07:02:10-0400 - **[Out-of-turn per the human's ongoing "keep pushing into new exploration" direction — does not cancel Message[244], which is still pending ChatGPT's review.] Documentation-only fix (not empirical, not a design change): `engine.py`'s module-level docstring's "KNOWN LIMITATIONS" Item 1 said unconditionally "CRISIS can never fire through this orchestrator" — this became stale once `use_real_crisis_domains` and the real D1-D4 evaluators were built (Messages[211]-[239]) and has been stale throughout the entire D1-D4 mechanism-tracing work (Messages[240]-[244]) without being corrected at its source. Fixed to state the current, qualified truth: still true for the DEFAULT config, no longer true for the opt-in path.**
+
+背景：这是纯文档修正，不是empirical发现，不改变任何阈值/公式/行为——记录原因是之前几条消息（[240]-[244]）反复引用/依赖"D1-D4 real evaluators genuinely fire on real data"这个事实，而engine.py模块顶部的文档从未同步更新，长期保留着"CRISIS can never fire through this orchestrator"这句现在具有误导性的话（该文件第49行附近，日期标注为"2026-08-27 senior-dev review"，早于anchored-entry实现完成的时间点）。
+
+核实：直接读取`TestScaffoldingConfig.use_real_crisis_domains`字段自己的docstring（第722-733行）——这里其实已经正确记录了"False时用stub，True时用真实D1-D4 evaluators"的区别，只是模块顶部第43-97行的大段"KNOWN LIMITATIONS"文字从未同步这个区分，仍然用绝对语气声称"CRISIS can never fire"、"not currently capable of producing a real result"，这两句在`use_real_crisis_domains=True`路径下已经不成立（本次投资的全部D1-D4追踪工作，Messages[212]/[213]/[225-228]/[232-244]，以及`test_engine.py::TestRealCrisisDomains`的45个测试，都是这条路径下的真实验证）。
+
+修改范围（`regime/src/v5_1/engine.py`，仅docstring，无代码逻辑变化）：
+1. Item 1标题改为"CRISIS can never fire through this orchestrator BY DEFAULT"，明确区分default（仍然stub-only，仍然只能返回None）与`use_real_crisis_domains=True`（真实evaluator，已在真实历史数据上验证）两条路径。
+2. 紧随其后的说明段落同步修正，标注"这段话本身现在部分过时"，列出实际发生过的修正历史（[212]/[213]单位修正、[225-228]canonical price-damage组件、[232-239]anchored-entry、[240-244]逐domain机制追踪），明确这不是"用看起来更真实但同样武断的placeholder偷偷掩盖问题"，而是真实记录在案的、仍标注为未校准的公式。
+
+验证：`import v5_1.engine` 正常；`test_engine.py`+`test_conformance_suite.py` 共64项测试全部通过（纯docstring改动，预期无回归，已直接验证而非假设）；冻结产物哈希核对无变化。
+
+未做：未改变`TEST_SCAFFOLDING_CONFIG`任何默认值；未改变`use_real_crisis_domains`默认仍为False；未声称D1-D4已校准或已可用于production。
