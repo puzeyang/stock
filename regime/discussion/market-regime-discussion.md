@@ -2450,3 +2450,23 @@ Message[258] - CLAUDE - 2026-08-29T10:15:46-0400 - **[Out-of-turn, continuing pr
 范围声明：本消息**不**据此判断relative-only信号是否"更危险"或应该被赋予更高权重——单一极端值（2020-02-24事件）主导了这个比较的最大值统计，样本量小（26/28个spell），不做任何统计显著性或预测能力宣称；forward drawdown只是描述"这之后发生了什么"，不是"这预测了什么"，两者的因果/预测关系本消息完全不涉及。这仍然是纯描述性panel输出，不生成阈值候选，不打overall标签。
 
 验证：脚本独立运行两次（含`_common.py`小修复前后）产出完全一致的数字；输出已持久化到`outputs/panel_c_d1_relative_spells.json`，含标准metadata（含正确的D1专属thresholds，不再是误标的D4常量）；`_common.py`向后兼容性核实（D4脚本无需修改即可继续工作）；两个冻结产物哈希核对无变化；`git status`确认改动范围符合预期（`_common.py`小修复 + 新脚本，无`crisis.py`/`engine.py`改动）。
+
+---
+
+Message[259] - CLAUDE - 2026-08-29T10:19:38-0400 - **[Out-of-turn, completing the last pre-registered panel item (D) from Message[247]'s original list.] Panel D (D3 moderate-slow-drawdown-boundary spell duration + subsequent 20% extreme crossing), full real timeline. Caught and fixed a real methodological flaw in my own first draft before reporting it: an unbounded forward search for "did it ever cross 20%" conflates plausibly-related episode continuation with much-later unrelated crises (three 2018/2019 spells were "crossing" only because the real 2020-03 COVID crash happened ~300 sessions afterward). Fixed by reporting both an unbounded and a stated, transparent 60-session-cutoff bounded result: 74.1% (20/27 spells) cross 20% unboundedly, but only 48.1% (13/27) do so within a plausibly-related 60-session window — and when they do, the median lag is 1 session.**
+
+方法：`panel_d_d3_moderate_slow_boundary.py`（新脚本，复用`_common.py`），对2018-06-22至今全部2053个真实交易日，用真实`_price_damage_components_estimator`重算D3三项sub-condition，把"moderate-slow boundary"精确定义为Message[242]/[243]/[244]已注册的`moderate_slow_drawdown_without_speed_confirmation`：`dd_stress=True`（drawdown>=12%）、尚未达到extreme（<20%且5日冲击未达extreme阈值）、且`shock_stress`/`trend_damage`均为False。聚合成真实连续spell后，对每个spell的最后一天，向后搜索真实数据中drawdown首次达到20%的日期。
+
+**自我发现并修正的方法论缺陷（写在最终版本之前，不是被复核后才承认）**：第一版脚本用无边界向后搜索（"只要在剩余全部真实数据里出现过，就算crossed"），结果2018-12/2019-01的3个spell都被标记为"crossed"，但crossing日期全部是**2020-03-12**——即307/300/297个真实session之后，真实的COVID崩盘。这在经济含义上几乎肯定是"两个不相关的独立危机"，不是"这个spell后续演变成了20%回撤"。同样地，2020-04到05月的2个spell和2022年3月的2个spell也匹配到了518-521和63-67个session之后的crossing，同样存疑。直接量化：20个"unbounded crossed"结果里，7个的lag超过60个真实session（[307,300,297,521,518,67,63]），其余13个lag在1-32个session之间，明显更可能是同一episode的延续。修正为同时报告unbounded和一个透明声明的60-session cutoff（约3个日历月，非拟合选择）两种统计，不隐藏两者的差异。
+
+发现：
+1. **Moderate-slow-boundary天数**：221/2053天(10.76%)，聚合成27段真实连续spell，持续时间中位数4个session，最长51个session（2022-11-10到2023-01-25，横跨2022年末到2023年初）。
+2. **Unbounded vs bounded crossing率**：unbounded search下20/27(74.1%)最终"crossed"20%；bounded(<=60 session)下只有13/27(48.1%)——两者相差26个百分点，证实边界选择对这个统计结果影响巨大，报告任一单一数字都会误导。
+3. **Bounded crossing的lag高度集中在极短时间**：13个bounded crossing的lag中位数只有1个session，多个恰好是1（`[1,1,1,1,1,1,1,1,4,19,23,28,30,32]`——注意这里有8个1）——意味着当moderate-slow-boundary spell确实演变为extreme时，往往是"紧接着下一天/几天就直接跨过20%"，而不是经过一段时间的持续温和回撤后才达到，这与D3当前"12%-20%区间需要额外速度确认才active"的设计逻辑有一定张力（真实数据显示这个区间到extreme的转换往往很快，不是缓慢渐进的），但本消息不据此提出任何设计调整。
+4. **7个spell在剩余真实数据里从未crossed 20%**（2022-11到2023-03的4段，加上2025-04的3段）——这些真实回撤最终缓和或转向，没有演变为极端回撤，是负面（未演变）证据的真实部分，同样值得记录。
+
+范围声明：本消息**不**判断"是否应该基于这个发现调整D3的12%-20%区间行为"，不提出任何阈值/持续性subcondition候选；60-session cutoff是为了让不同解读方式的结果都透明可见而选择的说明性边界，不是校准候选，不应被误读为一个新阈值提案。这仍然是纯描述性panel输出。
+
+验证：脚本独立运行两次（修正bounded/unbounded区分前后）确认底层spell/crossing数据完全一致，只是呈现方式改进；输出已持久化到`outputs/panel_d_d3_moderate_slow_boundary.json`，含正确的D3专属thresholds metadata；两个冻结产物哈希核对无变化；`git status`确认改动范围符合预期。
+
+至此，Message[247]预注册的四项首批分析（A: D2 contingency table，B: D4 member-count/LOO，C: D1 relative-only spell/drawdown，D: D3 moderate-slow boundary/crossing）全部完成。

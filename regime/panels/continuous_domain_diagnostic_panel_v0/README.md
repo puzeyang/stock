@@ -49,6 +49,14 @@ itself make a finding confirmatory.
   trigger spell duration and subsequent real forward max-drawdown
   distribution (Message[258]), pre-registered as panel item (C) in
   Message[247].
+- `panel_d_d3_moderate_slow_boundary.py` — D3's
+  `moderate_slow_drawdown_without_speed_confirmation` boundary spell
+  duration and subsequent 20% extreme-drawdown crossing (Message[259]),
+  pre-registered as panel item (D) in Message[247]. Reports BOTH an
+  unbounded forward search and a stated 60-real-session cutoff, since
+  an unbounded search was found (during development, not after review)
+  to conflate plausibly-related episode continuation with much-later
+  unrelated crises.
 - `diagnostic_panel_d4.py` — original single-sided D4 short_collapse
   leave-one-out (Message[250]) — **superseded by
   `panel_b_loo_matrix.py`'s Test A**, which fixed the one-sided
